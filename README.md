@@ -62,7 +62,7 @@ Ansible и Kubernetes — всё в браузере, без облаков и �
 ### Универсальный способ
 
 ```bash
-git clone  https://github.com/snuzik1/mega-pet
+git clone  https://github.com/snuzik1/mega-admin-tool
 cd megatool
 
 # Linux / macOS
