@@ -1,0 +1,55 @@
+/* Jobs section strings (English). */
+
+export default {
+  jobs: {
+    title: "Jobs",
+    subtitle: "All MegaTool runs with a live output log and the ability to stop them",
+    card: {
+      log: "Job log",
+    },
+    liveHint: "The live log opens with the Log button. Auto-refresh every 5 seconds.",
+    tabs: {
+      all: "All",
+      running: "Running",
+      failed: "Failed",
+    },
+    allKinds: "all kinds",
+    cancelAll: "Cancel all active",
+    confirmCancelAll: "Stop all running jobs ({n})?",
+    cancelTitle: "Cancel jobs",
+    allStopped: "All jobs stopped",
+    confirmCancel: "Stop job \"{title}\"?",
+    cancelOneTitle: "Cancel job",
+    openLog: "Log",
+    liveLog: "Live log",
+    detailTitle: "Job {id}",
+    noJobsFound: "no jobs found",
+    noJobs: "No jobs yet",
+    noJobsHint: "Jobs appear when you run Ansible, apply manifests and perform other operations.",
+    counts: "total: {total} • active: {running}",
+    kind: {
+      generic: "other",
+      command: "command",
+    },
+    col: {
+      status: "Status",
+      title: "Job",
+      kind: "Kind",
+      created: "Created",
+      duration: "Duration",
+      exitCode: "Code",
+      lines: "Lines",
+    },
+    kv: {
+      id: "ID",
+      title: "Title",
+      exitCode: "Exit code",
+      started: "Started",
+      finished: "Finished",
+      cwd: "Working dir",
+      lines: "Output lines",
+      error: "Error",
+    },
+    backHome: "Back to overview",
+  },
+};

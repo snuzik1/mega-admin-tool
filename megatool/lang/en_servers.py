@@ -1,0 +1,30 @@
+"""English texts of the SSH servers section (megatool/provision.py, api_servers.py)."""
+
+DATA = {
+    "servers": {
+        "notFound": "server not found",
+        "badHost": "Invalid server address: use a hostname, IP address or IPv6 in brackets",
+        "badUser": "Invalid SSH user: letters, digits, dot, dash and underscore (up to 32 characters)",
+        "badPort": "Port must be an integer between 1 and 65535",
+        "badKey": "Invalid key path (must not contain line breaks)",
+        "badParam": "Invalid value of parameter “{param}” in task {task}",
+        "unknownTask": "Unknown task: {task}",
+        "noTasks": "No tasks selected",
+        "noSsh": "ssh not found: install OpenSSH or set the path in settings (engines.ssh)",
+        "disabled": "Remote execution is disabled in settings (safety.allow_remote_exec)",
+        "unknownError": "unknown error",
+        "checkFailed": "Could not connect to the server: {error}",
+        "notReachable": "The server did not return a report: check the key, user and SSH access",
+        "emptyCommand": "Command is empty",
+        "commandTooLong": "Command is too long (up to {limit} characters)",
+        "jobRun": "SSH setup: {name} (tasks: {count})",
+        "jobExec": "SSH command: {name}",
+        "needRoot": "MegaTool: task “{task}” needs root, but passwordless sudo is unavailable — skipping",
+        "commandFailed": "MegaTool: task “{task}” failed (see the output above)",
+        "alreadyInstalled": "MegaTool: {task} — already installed, checking state",
+        "startSetup": "MegaTool: starting setup of “{name}” (tasks: {count})",
+        "finished": "MegaTool: setup complete",
+        "finishedErrors": "MegaTool: finished with errors:",
+        "playbookName": "setup of “{name}”",
+    },
+}

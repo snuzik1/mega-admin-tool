@@ -1,0 +1,69 @@
+name: Предложение функции
+description: Идея нового раздела, настройки или улучшения
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Опишите задачу пользователя, а не только готовое решение. Это помогает
+        выбрать минимальный и безопасный способ реализации.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Какую задачу это решает?
+      description: Что сейчас неудобно или невозможно сделать?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Предлагаемое решение
+      description: Как это могло бы выглядеть в интерфейсе и API?
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Альтернативы
+      description: Какие обходные пути вы пробовали?
+    validations:
+      required: false
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Затрагиваемые разделы
+      multiple: true
+      options:
+        - Обзор
+        - Доступность
+        - Серверы
+        - Контейнеры
+        - Балансировщик
+        - Приложения
+        - Наборы конфигов
+        - Конфиги
+        - Ansible
+        - Серверы по SSH
+        - Kubernetes
+        - Изменения
+        - Задачи
+        - Доступ
+        - Настройки
+        - Другое
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Ограничения проекта
+      options:
+        - label: Решение не требует обязательного Node.js, CDN или облачного сервиса.
+          required: false
+        - label: Я готов(а) помочь с реализацией или тестированием.
+          required: false

@@ -1,0 +1,32 @@
+"""Container engine messages (Docker/Podman)."""
+
+DATA = {
+    "containers": {
+        "notFound": "{engine} not found (set the path in settings)",
+        "notFoundShort": "not found",
+        "daemonSilent": "daemon is not responding",
+        "engineDown": "{engine} is unavailable",
+        "unavailable": "{engine} is unavailable: {reason}",
+        "daemonDown": "{engine}: daemon is not responding ({error})",
+        "listFailed": "listing failed",
+        "statsFailed": "failed to get statistics",
+        "badId": "invalid identifier",
+        "inspectFailed": "inspect failed",
+        "opNotSupported": "operation {op} is not supported",
+        "actionsDisabled": "container actions are disabled in settings",
+        "badName": "invalid new name",
+        "opFailed": "operation failed",
+        "engineUnavailable": "engine is unavailable",
+        "pathOutside": "path is outside the MegaTool working directory: {path}",
+        "composeExpected": "expected a compose file (*.yml/*.yaml), got: {name}",
+        "composeMissing": "no compose command found for {engine} (docker compose or podman-compose is required)",
+        "noComposeFile": "no compose file in the directory",
+        "badService": "invalid service name",
+        "composeUnavailable": "compose is unavailable",
+        "alertsEngine": "Containers unavailable ({engine})",
+        "alertsRestarting": "Container is restarting: {name}",
+        "alertsUnhealthy": "Container is unhealthy: {name}",
+        "alertsExited": "Container stopped: {name}",
+        "exitCode": "{status} (code {code})",
+    },
+}

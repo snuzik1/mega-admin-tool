@@ -1,0 +1,36 @@
+"""Русские сообщения каталога приложений."""
+
+DATA = {
+    "catalog": {
+        "recipeNotFound": "рецепт не найден: {recipe}",
+        "fieldRequired": "не заполнено поле «{field}»",
+        "badName": "имя приложения: допустимы буквы, цифры, дефис, точка и подчёркивание",
+        "portNotNumber": "порт должен быть числом",
+        "templateMissing": "шаблон {path}: не заполнены поля {fields}",
+        "envHeader": "# Создано MegaTool {date}",
+        "envSecretsWarning": "# Файл содержит секреты: не коммитьте его в git.",
+        "appNotFound": "приложение не найдено",
+        "dirMissing": "каталог приложения отсутствует: {path}",
+        "noEngine": "Docker/Podman недоступен — установите движок или укажите путь в настройках",
+        "unsupportedAction": "неподдерживаемое действие: {action}",
+        "jobTitle": "{name}: {action}",
+        "actions": {
+            "up": "запуск",
+            "down": "остановка",
+            "restart": "перезапуск",
+            "stop": "остановка",
+            "start": "запуск",
+            "pull": "обновление образов",
+            "build": "сборка",
+            "logs": "логи",
+        },
+        "engineUnavailable": "движок недоступен",
+        "composeFileNotFound": "compose-файл не найден",
+        "notManifest": "приложение не является набором Kubernetes-манифестов",
+        "kubectlNotFound": "kubectl не найден — манифесты можно применить вручную",
+        "applyHint": "kubectl apply -f <каталог>",
+        "stopped": "остановлено",
+        "stopFailed": "не удалось остановить",
+        "deleteOutside": "каталог вне каталога приложений — удаление запрещено",
+    },
+}

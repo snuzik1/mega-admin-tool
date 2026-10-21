@@ -1,0 +1,33 @@
+"""Русские сообщения балансировщика нагрузки."""
+
+DATA = {
+    "balancer": {
+        "algoRoundRobin": "По кругу (взвешенный)",
+        "algoLeastConn": "Наименьшая нагрузка",
+        "algoWeighted": "Взвешенный случайный",
+        "algoIpHash": "Привязка по IP (sticky)",
+        "algoRandom": "Случайный",
+        "invalidHost": "некорректный адрес бэкенда",
+        "invalidPort": "некорректный порт",
+        "portRange": "порт вне диапазона 1..65535",
+        "alreadyRunning": "уже запущен",
+        "noTargets": "не задано ни одного бэкенда",
+        "portConflictsMegatool": "порт совпадает с портом самой MegaTool",
+        "bindFailed": "не удалось занять {address} — {error} ({action})",
+        "freePortHint": "укажите свободный порт",
+        "portBusy": "порт занят",
+        "notRunning": "не запущен",
+        "noConnection": "нет соединения",
+        "nameRequired": "укажите имя балансировщика (буквы, цифры, дефис)",
+        "alreadyExists": "балансировщик «{name}» уже существует",
+        "listenPortRange": "порт вне диапазона 0..65535 (0 — выбрать свободный автоматически)",
+        "notFound": "балансировщик не найден",
+        "exportGenerated": "# Сгенерировано MegaTool ({date})",
+        "exportComment": "# Балансировщик: {name} — {algorithm}",
+        "alertTargetDownTitle": "Бэкенд недоступен: {address}",
+        "alertTargetDownDetail": "балансировщик {name} — {error}",
+        "alertSource": "балансировщик",
+        "alertNoTargetsTitle": "Нет живых бэкендов у {name}",
+        "alertNoTargetsDetail": "слушает {address}, запросы получат 503",
+    },
+}

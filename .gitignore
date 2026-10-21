@@ -1,0 +1,53 @@
+# виртуальное окружение / сборка
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# локальные данные приложения (если MEGATOOL_HOME указывает внутрь проекта)
+.megatool/
+runs/
+logs/
+.ci-home/
+
+# секреты и локальные настройки
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+secrets/
+
+# тесты и покрытие
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.tox/
+.nox/
+
+# Node.js не используется, но пусть не попадёт случайно
+node_modules/
+
+# редакторы и ОС
+.idea/
+.vscode/
+*.code-workspace
+*.swp
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# временные файлы
+*.log
+*.tmp
+*.bak
+.python-version

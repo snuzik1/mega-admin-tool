@@ -1,0 +1,37 @@
+"""Словарь серверных сообщений сборщика метрик (алерты, процессы, сеть)."""
+
+DATA = {
+    "collector": {
+        "cpuHigh": "Высокая загрузка CPU",
+        "cpuHighDetail": "{value}% ≥ {limit}%",
+        "memLow": "Мало свободной памяти",
+        "memLowDetail": "{value}% ≥ {limit}%",
+        "swapHigh": "Интенсивное использование swap",
+        "swapHighDetail": "{value}% ≥ {limit}%",
+        "diskLow": "Заканчивается место на диске",
+        "diskLowDetail": "максимальная занятость раздела {value}%",
+        "loadHigh": "Высокий load average",
+        "loadHighDetail": "load1={value} при {cores} ядрах",
+        "tempHigh": "Перегрев",
+        "tempHighDetail": "{value}°C",
+        "sourceSystem": "система",
+        "providerFailed": "Не удалось опросить {name}",
+        "psutilMissing": "psutil недоступен",
+        "killDisabled": "управление процессами отключено в настройках",
+        "systemProcess": "системный процесс защищён",
+        "adminRequired": "нужны права администратора",
+        "series": {
+            "cpu": "CPU, %",
+            "mem_pct": "Память, %",
+            "swap_pct": "Swap, %",
+            "load1": "Load average 1м",
+            "net_rx": "Сеть приём, Б/с",
+            "net_tx": "Сеть отдача, Б/с",
+            "disk_read": "Диск чтение, Б/с",
+            "disk_write": "Диск запись, Б/с",
+            "disk_pct": "Диск (макс. раздел), %",
+            "proc_count": "Процессов",
+            "temp_max": "Температура, °C",
+        },
+    },
+}

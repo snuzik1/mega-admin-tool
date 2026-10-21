@@ -1,0 +1,37 @@
+"""Metric collector messages (alerts, processes, network)."""
+
+DATA = {
+    "collector": {
+        "cpuHigh": "High CPU load",
+        "cpuHighDetail": "{value}% ≥ {limit}%",
+        "memLow": "Low free memory",
+        "memLowDetail": "{value}% ≥ {limit}%",
+        "swapHigh": "Heavy swap usage",
+        "swapHighDetail": "{value}% ≥ {limit}%",
+        "diskLow": "Low disk space",
+        "diskLowDetail": "max partition usage {value}%",
+        "loadHigh": "High load average",
+        "loadHighDetail": "load1={value} across {cores} cores",
+        "tempHigh": "Overheating",
+        "tempHighDetail": "{value}°C",
+        "sourceSystem": "system",
+        "providerFailed": "Failed to poll {name}",
+        "psutilMissing": "psutil is unavailable",
+        "killDisabled": "process management is disabled in settings",
+        "systemProcess": "system process is protected",
+        "adminRequired": "administrator rights are required",
+        "series": {
+            "cpu": "CPU, %",
+            "mem_pct": "Memory, %",
+            "swap_pct": "Swap, %",
+            "load1": "Load average 1m",
+            "net_rx": "Network in, B/s",
+            "net_tx": "Network out, B/s",
+            "disk_read": "Disk read, B/s",
+            "disk_write": "Disk write, B/s",
+            "disk_pct": "Disk (max partition), %",
+            "proc_count": "Processes",
+            "temp_max": "Temperature, °C",
+        },
+    },
+}

@@ -1,0 +1,36 @@
+"""English messages for the application catalog."""
+
+DATA = {
+    "catalog": {
+        "recipeNotFound": "recipe not found: {recipe}",
+        "fieldRequired": "field \"{field}\" is required",
+        "badName": "application name: letters, digits, hyphen, dot and underscore are allowed",
+        "portNotNumber": "port must be a number",
+        "templateMissing": "template {path}: missing fields {fields}",
+        "envHeader": "# Created by MegaTool {date}",
+        "envSecretsWarning": "# This file contains secrets: do not commit it to git.",
+        "appNotFound": "application not found",
+        "dirMissing": "application directory is missing: {path}",
+        "noEngine": "Docker/Podman is unavailable — install an engine or set the path in settings",
+        "unsupportedAction": "unsupported action: {action}",
+        "jobTitle": "{name}: {action}",
+        "actions": {
+            "up": "start",
+            "down": "stop",
+            "restart": "restart",
+            "stop": "stop",
+            "start": "start",
+            "pull": "pull images",
+            "build": "build",
+            "logs": "logs",
+        },
+        "engineUnavailable": "engine unavailable",
+        "composeFileNotFound": "compose file not found",
+        "notManifest": "application is not a set of Kubernetes manifests",
+        "kubectlNotFound": "kubectl not found — manifests can be applied manually",
+        "applyHint": "kubectl apply -f <directory>",
+        "stopped": "stopped",
+        "stopFailed": "failed to stop",
+        "deleteOutside": "directory is outside the apps directory — deletion is forbidden",
+    },
+}

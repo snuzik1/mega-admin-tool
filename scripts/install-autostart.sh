@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+# Автозапуск MegaTool в Linux через пользовательскую службу systemd.
+#
+#   bash scripts/install-autostart.sh            # при входе пользователя
+#   bash scripts/install-autostart.sh --linger   # и без входа (после перезагрузки)
+#
+# Служба работает от текущего пользователя, не требует root для установки.
+# Удаление: bash scripts/uninstall-autostart.sh
+
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+UNIT_NAME="megatool.service"
+UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
+PYTHON="$ROOT/.venv/bin/python"
+LINGER=0
+
+for arg in "$@"; do
+  case "$arg" in
+    --linger) LINGER=1 ;;
+    -h|--help)
+      echo "Использование: bash scripts/install-autostart.sh [--linger]"
+      exit 0
+      ;;
+    *)
+      echo "Неизвестный аргумент: $arg" >&2
+      exit 1
+      ;;
+  esac
+done
+
+if ! command -v systemctl >/dev/null 2>&1; then
+  echo "systemd не найден. Запускайте MegaTool вручную: ./start.sh" >&2
+  exit 1
+fi
+
+if [ ! -x "$PYTHON" ]; then
+  echo "Виртуальное окружение не найдено: $PYTHON" >&2
+  echo "Сначала запустите ./start.sh — он создаст .venv и поставит зависимости." >&2
+  exit 1
+fi
+
+mkdir -p "$UNIT_DIR"
+cat > "$UNIT_DIR/$UNIT_NAME" <<EOF
+[Unit]
+Description=MegaTool — локальная консоль администратора и DevOps
+Documentation=file://$ROOT/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=$ROOT
+ExecStart="$PYTHON" -m megatool --no-browser
+Environment=PYTHONIOENCODING=utf-8
+Environment=PYTHONUNBUFFERED=1
+Restart=on-failure
+RestartSec=3
+# Мягкое завершение: uvicorn успевает закрыть задачи и балансировщики.
+KillSignal=SIGINT
+TimeoutStopSec=15
+
+[Install]
+WantedBy=default.target
+EOF
+
+systemctl --user daemon-reload
+systemctl --user enable --now "$UNIT_NAME"
+
+if [ "$LINGER" = "1" ]; then
+  if command -v loginctl >/dev/null 2>&1; then
+    loginctl enable-linger "$USER" || echo "Не удалось включить linger — служба будет стартовать после входа." >&2
+  fi
+fi
+
+PORT="$(sed -n 's/.*"port"[[:space:]]*:[[:space:]]*\([0-9]*\).*/\1/p' "$HOME/.megatool/config.json" 2>/dev/null | head -n1 || true)"
+PORT="${PORT:-8787}"
+
+echo ""
+echo "Автозапуск включён: $UNIT_NAME"
+echo "Интерфейс: http://127.0.0.1:$PORT/"
+echo "Статус:    systemctl --user status $UNIT_NAME"
+echo "Журнал:    journalctl --user -u $UNIT_NAME -f"
+echo "Удалить:   bash scripts/uninstall-autostart.sh"

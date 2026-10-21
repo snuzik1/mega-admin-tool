@@ -1,0 +1,32 @@
+"""Словарь серверных сообщений движков контейнеров (Docker/Podman)."""
+
+DATA = {
+    "containers": {
+        "notFound": "{engine} не найден (укажите путь в настройках)",
+        "notFoundShort": "не найден",
+        "daemonSilent": "демон не отвечает",
+        "engineDown": "{engine} недоступен",
+        "unavailable": "{engine} недоступен: {reason}",
+        "daemonDown": "{engine}: демон не отвечает ({error})",
+        "listFailed": "ошибка листинга",
+        "statsFailed": "ошибка получения статистики",
+        "badId": "некорректный идентификатор",
+        "inspectFailed": "ошибка inspect",
+        "opNotSupported": "операция {op} не поддерживается",
+        "actionsDisabled": "действия с контейнерами отключены в настройках",
+        "badName": "некорректное новое имя",
+        "opFailed": "ошибка операции",
+        "engineUnavailable": "движок недоступен",
+        "pathOutside": "путь вне рабочего каталога MegaTool: {path}",
+        "composeExpected": "ожидается compose-файл (*.yml/*.yaml), получено: {name}",
+        "composeMissing": "для {engine} не найдена команда compose (нужен docker compose или podman-compose)",
+        "noComposeFile": "в каталоге нет compose-файла",
+        "badService": "некорректное имя сервиса",
+        "composeUnavailable": "compose недоступен",
+        "alertsEngine": "Контейнеры недоступны ({engine})",
+        "alertsRestarting": "Контейнер перезапускается: {name}",
+        "alertsUnhealthy": "Контейнер нездоров: {name}",
+        "alertsExited": "Контейнер остановлен: {name}",
+        "exitCode": "{status} (код {code})",
+    },
+}
