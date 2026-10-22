@@ -110,12 +110,15 @@ def test_files_write_read_delete(client, home):
 def test_workspace_sandbox(home):
     from megatool.appfiles import Workspace
     from megatool.config import Config
+    from megatool.util import is_within
 
     workspace = Workspace(Config())
     with pytest.raises(PermissionError):
         workspace.resolve("C:/Windows/System32/config.json" if os.name == "nt" else "/etc/passwd")
     inside = workspace.resolve("configs/test.txt")
-    assert str(inside).startswith(str(home))
+    # home может быть симлинком (macOS) или коротким 8.3-путём (Windows),
+    # поэтому сравниваем уже разрешённые пути.
+    assert is_within(inside, home)
 
 
 def test_validate_helpers():
