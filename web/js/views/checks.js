@@ -4,7 +4,7 @@
 import { api } from "../api.js";
 import { t } from "../i18n.js";
 import {
-  badge, button, can, card, confirmDialog, empty, field, fmtNumber, fmtTime, guard, h, input,
+  badge, button, card, confirmDialog, empty, field, fmtNumber, fmtTime, guard, h, input,
   modal, mount, poller, select, table, toast, toolbar,
 } from "../ui.js";
 
@@ -74,7 +74,6 @@ function reportStamp() {
 export async function render(root, { args = [] } = {}) {
   let snapshot = { items: [], summary: {}, checked: "" };
   let disposed = false;
-  const manage = can("checks", true);
   const summaryHost = h("div", { class: "checks-summary" });
   const tableHost = h("div");
   const extraHost = h("span", { class: "muted small" });
@@ -98,8 +97,8 @@ export async function render(root, { args = [] } = {}) {
     if (!snapshot.items.length) {
       mount(tableHost, empty(t("checks.empty"), {
         mark: "◎",
-        hint: manage ? t("checks.emptyHint") : t("checks.emptyHintReadonly"),
-        extra: manage ? button(t("checks.add"), () => editDialog(), { kind: "primary", size: "sm" }) : null,
+        hint: t("checks.emptyHint"),
+        extra: button(t("checks.add"), () => editDialog(), { kind: "primary", size: "sm" }),
       }));
       return;
     }
@@ -117,10 +116,10 @@ export async function render(root, { args = [] } = {}) {
         { key: "checked", label: t("checks.column.checked"), width: "130px",
           render: (row) => row.checked ? h("span", { class: "small" }, fmtTime(row.checked)) : h("span", { class: "muted small" }, t("checks.never")) },
         { key: "history", label: t("checks.column.history"), width: "210px", sortable: false, render: historyStrip },
-        ...(manage ? [{ key: "actions", label: t("checks.column.actions"), width: "190px", sortable: false, render: (row) => h("div", { class: "row" },
+        { key: "actions", label: t("checks.column.actions"), width: "190px", sortable: false, render: (row) => h("div", { class: "row" },
           button(t("checks.run"), () => runOne(row), { size: "sm", kind: "ghost" }),
           button(t("common.buttons.edit"), () => editDialog(row), { size: "sm", kind: "ghost" }),
-          button(t("common.buttons.delete"), () => remove(row), { size: "sm", kind: "danger" })) }] : []),
+          button(t("common.buttons.delete"), () => remove(row), { size: "sm", kind: "danger" })) },
       ],
       rows: snapshot.items,
       empty: t("checks.empty"),
@@ -303,14 +302,14 @@ export async function render(root, { args = [] } = {}) {
 
   const head = h("div", { class: "view-head" },
     h("div", {},
-      h("h2", {}, t("checks.title")),
-      h("p", { class: "muted" }, t("checks.subtitle"))),
+      h("h1", { class: "view-title" }, t("checks.title")),
+      h("div", { class: "view-sub" }, t("checks.subtitle"))),
     h("div", { class: "toolbar" },
       button(t("checks.exportJson"), exportJson, { size: "sm", kind: "ghost" }),
       button(t("checks.exportCsv"), exportCsv, { size: "sm", kind: "ghost" }),
       button(t("checks.refresh"), refresh, { size: "sm", kind: "ghost" }),
-      manage ? button(t("checks.runAll"), runAll, { size: "sm", kind: "ghost" }) : null,
-      manage ? button(t("checks.add"), () => editDialog(), { size: "sm", kind: "primary" }) : null));
+      button(t("checks.runAll"), runAll, { size: "sm", kind: "ghost" }),
+      button(t("checks.add"), () => editDialog(), { size: "sm", kind: "primary" })));
 
   mount(root, head,
     card(t("checks.card"), h("div", { class: "col" }, summaryHost, tableHost), { extra: extraHost }));

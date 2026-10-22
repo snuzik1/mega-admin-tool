@@ -207,40 +207,6 @@ def test_job_limit(tmp_path):
 
 
 # --------------------------------------------------------------------------- #
-#  Защита токена и ограничение перебора
-# --------------------------------------------------------------------------- #
-
-def test_token_guard_throttle():
-    from fastapi.testclient import TestClient
-
-    from megatool import server as server_module
-    from megatool.config import Config
-
-    cfg = Config()
-    cfg.set("auth.enabled", True)
-    cfg.set("auth.token", "secret-token")
-    server_module._token_failures.clear()
-    application = server_module.create_app(cfg)
-    try:
-        with TestClient(application, base_url="http://127.0.0.1:8799") as guard_client:
-            assert guard_client.get("/api/state").status_code == 401
-            for _ in range(server_module.TOKEN_FAIL_LIMIT - 1):
-                response = guard_client.get("/api/state", headers={"x-megatool-token": "bad"})
-                assert response.status_code == 401
-            blocked = guard_client.get("/api/state", headers={"x-megatool-token": "bad"})
-            assert blocked.status_code == 429
-            assert blocked.headers.get("retry-after")
-
-            server_module._token_failures.clear()
-            ok = guard_client.get("/api/state", headers={"x-megatool-token": "secret-token"})
-            assert ok.status_code == 200
-            # Для обычного HTTP токен в query больше не принимается.
-            assert guard_client.get("/api/state?token=secret-token").status_code == 401
-    finally:
-        server_module._token_failures.clear()
-
-
-# --------------------------------------------------------------------------- #
 #  Живой uvicorn + WebSocket
 # --------------------------------------------------------------------------- #
 

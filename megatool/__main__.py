@@ -8,7 +8,7 @@ import sys
 import threading
 import time
 import webbrowser
-from typing import TYPE_CHECKING
+from typing import List, Optional, TYPE_CHECKING
 
 from . import APP_NAME, __version__
 from .i18n import set_language, t
@@ -36,7 +36,7 @@ def _banner(host: str, port: int, cfg: Config) -> None:
     print("=" * 66)
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(
         prog="megatool",
         description=f"{APP_NAME} — открытая консоль системного администратора и DevOps",

@@ -2,10 +2,10 @@
 
 export default {
   bundles: {
-    title: "Config bundles",
+    title: "File bundles",
     subtitle: "Named file sets — compose, nginx, Ansible and more — packed as one archive",
     create: "New bundle",
-    createTitle: "New config bundle",
+    createTitle: "New file bundle",
     name: "Bundle name",
     namePlaceholder: "e.g. dev-server",
     description: "Description",
@@ -23,9 +23,9 @@ export default {
       size: "Size",
       modified: "Modified",
     },
-    noBundles: "No bundles yet",
+    noBundles: "No file bundles yet",
     noBundlesHint: "Create a bundle from a preset or from scratch — files can be added later.",
-    selectBundle: "No bundle selected",
+    selectBundle: "No file bundle selected",
     selectBundleHint: "Pick a bundle from the list on the left to see its files.",
     noFiles: "The bundle has no files",
     addFile: "Add file",

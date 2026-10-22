@@ -15,7 +15,7 @@ import json
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any
+from typing import Any, Dict
 from urllib.parse import urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
@@ -36,7 +36,7 @@ _NUMERIC_FIELDS = (
 )
 _TEXT_FIELDS = ("host", "os", "os_pretty", "agent_version")
 
-_CACHE: dict[str, Any] = {"ts": 0.0, "key": "", "data": None}
+_CACHE: Dict[str, Any] = {"ts": 0.0, "key": "", "data": None}
 _LOCK = threading.Lock()
 
 
@@ -61,9 +61,9 @@ def normalize_url(value: Any) -> str:
     return urlunsplit((parts.scheme, parts.netloc, path, "", ""))
 
 
-def pick_metrics(payload: dict[str, Any]) -> dict[str, Any]:
+def pick_metrics(payload: Dict[str, Any]) -> Dict[str, Any]:
     """Оставляет только известные поля, приводя числа к нормальному виду."""
-    metrics: dict[str, Any] = {}
+    metrics: Dict[str, Any] = {}
     for key in _TEXT_FIELDS:
         if key in payload and isinstance(payload[key], str):
             metrics[key] = payload[key][:200]
@@ -85,7 +85,7 @@ def pick_metrics(payload: dict[str, Any]) -> dict[str, Any]:
     return metrics
 
 
-def fetch(url: str, token: str = "", timeout: float = TIMEOUT) -> dict[str, Any]:
+def fetch(url: str, token: str = "", timeout: float = TIMEOUT) -> Dict[str, Any]:
     """Забирает /metrics у одного агента. Бросает исключение при ошибке."""
     target = normalize_url(url)
     if not target:
@@ -107,7 +107,7 @@ def fetch(url: str, token: str = "", timeout: float = TIMEOUT) -> dict[str, Any]
     return data
 
 
-def _auth_headers(token: str) -> dict[str, str]:
+def _auth_headers(token: str) -> Dict[str, str]:
     if not token:
         return {}
     return {
@@ -116,7 +116,7 @@ def _auth_headers(token: str) -> dict[str, str]:
     }
 
 
-def _probe(agent: dict[str, Any]) -> dict[str, Any]:
+def _probe(agent: Dict[str, Any]) -> Dict[str, Any]:
     entry = {
         "id": str(agent.get("id") or ""),
         "name": str(agent.get("name") or agent.get("id") or "agent"),
@@ -136,7 +136,7 @@ def _probe(agent: dict[str, Any]) -> dict[str, Any]:
     return entry
 
 
-def collect(cfg, force: bool = False) -> dict[str, Any]:
+def collect(cfg, force: bool = False) -> Dict[str, Any]:
     """Опрашивает всех настроенных агентов параллельно (с кэшем на CACHE_TTL)."""
     agents = [item for item in (cfg.get("agents", []) or []) if isinstance(item, dict)]
     agents = agents[:MAX_AGENTS]

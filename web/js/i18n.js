@@ -42,8 +42,6 @@ import ruChecks from "./lang/ru/checks.js";
 import enChecks from "./lang/en/checks.js";
 import ruHosts from "./lang/ru/hosts.js";
 import enHosts from "./lang/en/hosts.js";
-import ruAccess from "./lang/ru/access.js";
-import enAccess from "./lang/en/access.js";
 
 export const SUPPORTED_LANGS = ["ru", "en"];
 export const LANG_STORAGE_KEY = "megatool.lang";
@@ -53,13 +51,13 @@ export const DICTS = {
     ...ruCommon, ...ruNav, ...ruDashboard, ...ruContainers, ...ruBalancer,
     ...ruCatalog, ...ruConfigs, ...ruAnsible, ...ruK8s, ...ruChanges,
     ...ruJobs, ...ruSettings, ...ruBundles, ...ruServers,
-    ...ruChecks, ...ruHosts, ...ruAccess,
+    ...ruChecks, ...ruHosts,
   },
   en: {
     ...enCommon, ...enNav, ...enDashboard, ...enContainers, ...enBalancer,
     ...enCatalog, ...enConfigs, ...enAnsible, ...enK8s, ...enChanges,
     ...enJobs, ...enSettings, ...enBundles, ...enServers,
-    ...enChecks, ...enHosts, ...enAccess,
+    ...enChecks, ...enHosts,
   },
 };
 

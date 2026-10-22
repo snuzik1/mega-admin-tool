@@ -2,7 +2,7 @@
 
 export default {
   checks: {
-    title: "Availability",
+    title: "Service checks",
     subtitle: "HTTP endpoints, TCP ports and TLS certificates: state, latency and history",
     add: "Add check",
     refresh: "Refresh",
@@ -25,7 +25,6 @@ export default {
     deleteConfirm: "Delete the check “{name}”? Its result history will be removed too.",
     empty: "No checks yet",
     emptyHint: "Add an HTTP endpoint, TCP port or TLS certificate — MegaTool will poll it in the background.",
-    emptyHintReadonly: "Your account has view-only access. Checks are added by a user with manage permission for this section.",
     summary: {
       up: "up: {n}",
       warn: "warning: {n}",

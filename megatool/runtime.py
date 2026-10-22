@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Dict, List, Optional
 
 from . import __version__
 from .ansible import Ansible
@@ -19,14 +19,12 @@ from .catalog import Catalog
 from .changes import configure_audit
 from .checks import ChecksManager
 from .collector import Collector
-from .access import AccessManager
 from .config import Config
 from .containers import ContainerRegistry
 from .hosts import HostsManager
 from .i18n import set_language
 from .jobs import JobManager
 from .k8s import CachedK8s, K8s
-from .security import AuthManager
 from .util import ensure_dir, which
 
 from .config import CONFIGS_DIR, RUNS_DIR
@@ -35,8 +33,6 @@ from .config import CONFIGS_DIR, RUNS_DIR
 @dataclass
 class Runtime:
     cfg: Config
-    auth: AuthManager
-    access: AccessManager
     collector: Collector
     checks: ChecksManager
     hosts: HostsManager
@@ -50,9 +46,9 @@ class Runtime:
     workspace: Workspace
     started_at: float = field(default_factory=time.time)
     version: str = __version__
-    notes: list[Any] = field(default_factory=list)
+    notes: List[Any] = field(default_factory=list)
 
-    def state(self) -> dict[str, Any]:
+    def state(self) -> Dict[str, Any]:
         """Сводное состояние для верхней панели интерфейса."""
         engines = self.registry.summary()
         k8s_status = self.k8s.available()
@@ -74,8 +70,6 @@ class Runtime:
             "checks": self.checks.summary(),
             "hosts": self.hosts.public_state(),
             "alerts": self.collector.active_alerts(),
-            "auth": self.auth.public_state(),
-            "access": self.access.summary(),
             "notes": self.notes,
         }
 
@@ -93,7 +87,7 @@ def _number_setting(value: Any, default: float, low: float, high: float) -> floa
     return min(high, max(low, number))
 
 
-def build_runtime(cfg: Config | None = None) -> Runtime:
+def build_runtime(cfg: Optional[Config] = None) -> Runtime:
     cfg = cfg or Config()
     set_language(cfg.get("ui.language", "ru"))
     ensure_dir(RUNS_DIR)
@@ -104,8 +98,6 @@ def build_runtime(cfg: Config | None = None) -> Runtime:
         int(_number_setting(cfg.get("audit.keep"), 3, 1, 50)),
     )
 
-    auth = AuthManager(cfg)
-    access = AccessManager(cfg)
     jobs = JobManager(
         RUNS_DIR,
         keep=int(_number_setting(cfg.get("jobs.keep"), 60, 10, 500)),
@@ -129,7 +121,7 @@ def build_runtime(cfg: Config | None = None) -> Runtime:
     collector.alert_providers["checks"] = checks.alerts
     collector.alert_providers["hosts"] = hosts.alerts
 
-    notes: list[Any] = []
+    notes: List[Any] = []
     if not collector.state.get("psutil"):
         notes.append({"key": "notes.noPsutil"})
     if not registry.summary().get("available_any"):
@@ -144,8 +136,6 @@ def build_runtime(cfg: Config | None = None) -> Runtime:
 
     runtime = Runtime(
         cfg=cfg,
-        auth=auth,
-        access=access,
         collector=collector,
         checks=checks,
         hosts=hosts,

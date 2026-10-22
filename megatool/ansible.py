@@ -13,12 +13,12 @@ import shutil
 import threading
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, List, Optional, Set
 
 from .config import CONFIGS_DIR, Config
 from .i18n import get_language, t
 from .jobs import Job, JobManager
-from .util import CmdResult, ensure_dir, is_safe_limit, iso, run, which
+from .util import CmdResult, ensure_dir, is_safe_limit, is_within, iso, run, which
 
 ANSIBLE_DIR = CONFIGS_DIR / "ansible"
 PLAYBOOKS_DIR = ANSIBLE_DIR / "playbooks"
@@ -121,20 +121,20 @@ _TAG_RE = re.compile(r"^[A-Za-z0-9_,\-.]{1,128}$")
 class Ansible:
     def __init__(self, cfg: Config) -> None:
         self.cfg = cfg
-        self._cache: dict[str, Any] = {}
+        self._cache: Dict[str, Any] = {}
         self._lock = threading.RLock()
 
     # ------------------------------------------------------------------ #
     @property
-    def playbook_bin(self) -> str | None:
+    def playbook_bin(self) -> Optional[str]:
         return which("ansible-playbook", self.cfg.get("engines.ansible_playbook", "") or None)
 
     @property
-    def ansible_bin(self) -> str | None:
+    def ansible_bin(self) -> Optional[str]:
         return which("ansible", self.cfg.get("engines.ansible", "") or None)
 
     @property
-    def inventory_bin(self) -> str | None:
+    def inventory_bin(self) -> Optional[str]:
         return which("ansible-inventory", self.cfg.get("engines.ansible_inventory", "") or None)
 
     def inventory_path(self) -> Path:
@@ -159,7 +159,7 @@ class Ansible:
             site.write_text(_scaffold_playbook(), encoding="utf-8")
 
     # ------------------------------------------------------------------ #
-    def status(self, refresh: bool = False) -> dict[str, Any]:
+    def status(self, refresh: bool = False) -> Dict[str, Any]:
         with self._lock:
             if self._cache.get("status") and not refresh \
                     and time.time() - self._cache.get("status_ts", 0) < 120:
@@ -192,7 +192,7 @@ class Ansible:
     # ------------------------------------------------------------------ #
     #  Инвентарь
     # ------------------------------------------------------------------ #
-    def inventory_tree(self) -> dict[str, Any]:
+    def inventory_tree(self) -> Dict[str, Any]:
         inventory = self.inventory_path()
         if not inventory.is_file():
             return {"ok": False, "error": t("ansible.inventoryNotFound"), "groups": [], "hosts": []}
@@ -215,11 +215,11 @@ class Ansible:
         return self._tree_from_ini(text)
 
     @staticmethod
-    def _tree_from_json(data: dict[str, Any], source: str) -> dict[str, Any]:
+    def _tree_from_json(data: Dict[str, Any], source: str) -> Dict[str, Any]:
         meta = data.pop("_meta", {}) if isinstance(data, dict) else {}
         hostvars = (meta or {}).get("hostvars", {}) if isinstance(meta, dict) else {}
         groups = []
-        all_hosts: set[str] = set()
+        all_hosts: Set[str] = set()
         for name, body in (data or {}).items():
             if not isinstance(body, dict):
                 continue
@@ -238,11 +238,11 @@ class Ansible:
                 "hosts": sorted(all_hosts), "count": len(all_hosts)}
 
     @staticmethod
-    def _tree_from_ini(text: str) -> dict[str, Any]:
+    def _tree_from_ini(text: str) -> Dict[str, Any]:
         """Простой разбор INI-инвентаря (используется, если нет ansible-inventory)."""
-        groups: dict[str, dict[str, Any]] = {}
-        current: str | None = None
-        ungrouped: list[dict[str, Any]] = []
+        groups: Dict[str, Dict[str, Any]] = {}
+        current: Optional[str] = None
+        ungrouped: List[Dict[str, Any]] = []
         for raw in text.splitlines():
             line = raw.split("#", 1)[0].strip()
             if not line:
@@ -293,7 +293,7 @@ class Ansible:
     # ------------------------------------------------------------------ #
     #  Плейбуки
     # ------------------------------------------------------------------ #
-    def playbooks(self) -> list[dict[str, Any]]:
+    def playbooks(self) -> List[Dict[str, Any]]:
         directory = self.playbooks_dir()
         if not directory.is_dir():
             return []
@@ -314,8 +314,8 @@ class Ansible:
         return items
 
     @staticmethod
-    def _playbook_summary(path: Path) -> dict[str, Any]:
-        summary: dict[str, Any] = {"plays": [], "hosts": [], "task_count": 0, "roles": []}
+    def _playbook_summary(path: Path) -> Dict[str, Any]:
+        summary: Dict[str, Any] = {"plays": [], "hosts": [], "task_count": 0, "roles": []}
         try:
             import yaml
         except ImportError:
@@ -348,12 +348,12 @@ class Ansible:
         summary["hosts"] = sorted(set(summary["hosts"]))
         return summary
 
-    def resolve_playbook(self, name_or_path: str) -> Path | None:
+    def resolve_playbook(self, name_or_path: str) -> Optional[Path]:
         candidate = Path(name_or_path)
         directory = self.playbooks_dir()
         if candidate.is_absolute() and candidate.is_file():
             resolved = candidate.resolve()
-            if resolved.is_relative_to(directory.resolve()):
+            if is_within(resolved, directory):
                 return resolved
             return None
         direct = directory / name_or_path
@@ -376,10 +376,10 @@ class Ansible:
         skip_tags: str = "",
         check: bool = False,
         diff: bool = False,
-        extra_vars: dict[str, str] | None = None,
+        extra_vars: Optional[Dict[str, str]] = None,
         verbosity: int = 0,
         inventory: str = "",
-    ) -> dict[str, Any]:
+    ) -> Dict[str, Any]:
         binary = self.playbook_bin
         if not binary:
             return {"ok": False, "error": t("ansible.playbookBinNotFound")}
@@ -431,7 +431,7 @@ class Ansible:
         pattern: str = "all",
         args: str = "",
         inventory: str = "",
-    ) -> dict[str, Any]:
+    ) -> Dict[str, Any]:
         binary = self.ansible_bin
         if not binary:
             return {"ok": False, "error": t("ansible.binNotFound")}
@@ -448,7 +448,7 @@ class Ansible:
                           meta={"module": module, "pattern": pattern})
         return {"ok": True, "job": job.to_dict()}
 
-    def syntax_check(self, playbook: str) -> dict[str, Any]:
+    def syntax_check(self, playbook: str) -> Dict[str, Any]:
         binary = self.playbook_bin
         if not binary:
             return {"ok": False, "error": t("ansible.playbookBinMissing")}
@@ -460,7 +460,7 @@ class Ansible:
         return {"ok": res.ok, "text": (res.out or "") + (res.err or ""),
                 "error": "" if res.ok else (res.err or res.error)[:400]}
 
-    def write_inventory(self, content: str) -> dict[str, Any]:
+    def write_inventory(self, content: str) -> Dict[str, Any]:
         path = self.inventory_path()
         ensure_dir(path.parent)
         if path.exists():
@@ -473,8 +473,8 @@ class Ansible:
         return {"ok": True, "path": str(path)}
 
 
-def _parse_kv(text: str) -> dict[str, str]:
-    out: dict[str, str] = {}
+def _parse_kv(text: str) -> Dict[str, str]:
+    out: Dict[str, str] = {}
     for token in (text or "").split():
         if "=" in token:
             key, _, value = token.partition("=")

@@ -78,7 +78,7 @@ def test_jobs_empty_start(client):
 def test_settings_roundtrip(client):
     settings = client.get("/api/settings").json()
     assert settings["ok"] is True
-    assert settings["data"]["auth"]["token"] == ""  # секрет не отдаём
+    assert "auth" not in settings["data"]  # система доступа удалена из проекта
 
     patched = client.patch("/api/settings", json={"ui": {"theme": "light"}}).json()
     assert patched["ok"] is True

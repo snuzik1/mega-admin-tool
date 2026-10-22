@@ -12,11 +12,11 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, List, Optional, Tuple
 
 from .config import HOME_DIR, Config
 from .i18n import t
-from .util import CmdResult, human_bytes, iso, json_any, run, safe_id, which
+from .util import CmdResult, human_bytes, is_within, iso, json_any, run, safe_id, which
 
 _KIND_ALLOWED = {
     "pod", "pods", "deployment", "deployments", "statefulset", "statefulsets",
@@ -72,14 +72,14 @@ class K8s:
     def __init__(self, cfg: Config) -> None:
         self.cfg = cfg
         self._lock = threading.RLock()
-        self._cache: dict[str, Any] = {}
+        self._cache: Dict[str, Any] = {}
 
     # ------------------------------------------------------------------ #
     @property
-    def binary(self) -> str | None:
+    def binary(self) -> Optional[str]:
         return which("kubectl", self.cfg.get("engines.kubectl", "") or None)
 
-    def available(self) -> dict[str, Any]:
+    def available(self) -> Dict[str, Any]:
         binary = self.binary
         if not binary:
             return {"available": False, "version": "", "error": t("k8s.kubectlMissing")}
@@ -101,7 +101,7 @@ class K8s:
     def namespace(self) -> str:
         return str(self.cfg.get("k8s.namespace", "") or "")
 
-    def _base(self) -> list[str] | None:
+    def _base(self) -> Optional[List[str]]:
         binary = self.binary
         if not binary:
             return None
@@ -110,8 +110,8 @@ class K8s:
             base += ["--context", self.context]
         return base
 
-    def _kubectl(self, args: list[str], timeout: float = 30.0, use_namespace: bool = True,
-                 namespace: str | None = None) -> CmdResult:
+    def _kubectl(self, args: List[str], timeout: float = 30.0, use_namespace: bool = True,
+                 namespace: Optional[str] = None) -> CmdResult:
         base = self._base()
         if base is None:
             return CmdResult(False, 127, error=t("k8s.kubectlMissing"), missing=True)
@@ -124,7 +124,7 @@ class K8s:
         return run(cmd, timeout=timeout)
 
     def _json(self, resource: str, *extra: str, use_namespace: bool = True,
-              namespace: str | None = None, timeout: float = 40.0) -> dict[str, Any]:
+              namespace: Optional[str] = None, timeout: float = 40.0) -> Dict[str, Any]:
         res = self._kubectl(["get", resource, "-o", "json", *extra], timeout=timeout,
                             use_namespace=use_namespace, namespace=namespace)
         if not res.ok:
@@ -136,7 +136,7 @@ class K8s:
         return {"ok": True, "data": data}
 
     @staticmethod
-    def _items(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    def _items(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
         if not payload.get("ok"):
             return []
         data = payload.get("data", {})
@@ -146,9 +146,9 @@ class K8s:
     # ------------------------------------------------------------------ #
     #  Обзор
     # ------------------------------------------------------------------ #
-    def overview(self) -> dict[str, Any]:
+    def overview(self) -> Dict[str, Any]:
         status = self.available()
-        result: dict[str, Any] = {
+        result: Dict[str, Any] = {
             "available": status["available"],
             "version": status.get("version", ""),
             "error": status.get("error", ""),
@@ -181,7 +181,7 @@ class K8s:
         result["counts"]["nodes_ready"] = len([n for n in nodes if n["ready"]])
 
         result["counts"]["pods"] = len(pods)
-        phases: dict[str, int] = {}
+        phases: Dict[str, int] = {}
         for pod in pods:
             phases[pod["phase"]] = phases.get(pod["phase"], 0) + 1
         result["counts"]["pods_by_phase"] = phases
@@ -198,9 +198,9 @@ class K8s:
         return result
 
     # ------------------------------------------------------------------ #
-    def nodes(self) -> list[dict[str, Any]]:
+    def nodes(self) -> List[Dict[str, Any]]:
         payload = self._json("nodes", use_namespace=False)
-        out: list[dict[str, Any]] = []
+        out: List[Dict[str, Any]] = []
         allocatable_cpu_total = 0.0
         for item in self._items(payload):
             meta = item.get("metadata", {})
@@ -241,10 +241,10 @@ class K8s:
             })
         return out
 
-    def pods(self, namespace: str | None = None, all_namespaces: bool = True) -> list[dict[str, Any]]:
+    def pods(self, namespace: Optional[str] = None, all_namespaces: bool = True) -> List[Dict[str, Any]]:
         extra = ["--all-namespaces"] if all_namespaces and not (namespace or self.namespace) else []
         payload = self._json("pods", *extra, use_namespace=not bool(all_namespaces))
-        out: list[dict[str, Any]] = []
+        out: List[Dict[str, Any]] = []
         for item in self._items(payload):
             meta = item.get("metadata", {})
             spec = item.get("spec", {})
@@ -276,7 +276,7 @@ class K8s:
         out.sort(key=lambda p: (p["namespace"], p["name"]))
         return out
 
-    def deployments(self, namespace: str | None = None, all_namespaces: bool = True) -> list[dict[str, Any]]:
+    def deployments(self, namespace: Optional[str] = None, all_namespaces: bool = True) -> List[Dict[str, Any]]:
         extra = ["--all-namespaces"] if all_namespaces and not (namespace or self.namespace) else []
         payload = self._json("deployments", *extra, use_namespace=not bool(all_namespaces))
         out = []
@@ -301,7 +301,7 @@ class K8s:
         out.sort(key=lambda d: (d["namespace"], d["name"]))
         return out
 
-    def services(self, namespace: str | None = None, all_namespaces: bool = True) -> list[dict[str, Any]]:
+    def services(self, namespace: Optional[str] = None, all_namespaces: bool = True) -> List[Dict[str, Any]]:
         extra = ["--all-namespaces"] if all_namespaces and not (namespace or self.namespace) else []
         payload = self._json("services", *extra, use_namespace=not bool(all_namespaces))
         out = []
@@ -329,11 +329,11 @@ class K8s:
         out.sort(key=lambda s: (s["namespace"], s["name"]))
         return out
 
-    def namespaces(self) -> list[str]:
+    def namespaces(self) -> List[str]:
         payload = self._json("namespaces", use_namespace=False)
         return sorted([item.get("metadata", {}).get("name", "") for item in self._items(payload) if item.get("metadata")])
 
-    def events(self, limit: int = 100, namespace: str | None = None) -> list[dict[str, Any]]:
+    def events(self, limit: int = 100, namespace: Optional[str] = None) -> List[Dict[str, Any]]:
         payload = self._json("events", "--all-namespaces", "--sort-by=.lastTimestamp",
                              use_namespace=False, timeout=45)
         if not payload.get("ok"):
@@ -357,7 +357,7 @@ class K8s:
         return out[:limit]
 
     # ------------------------------------------------------------------ #
-    def top_nodes(self) -> list[dict[str, Any]]:
+    def top_nodes(self) -> List[Dict[str, Any]]:
         res = self._kubectl(["top", "nodes", "--no-headers"], use_namespace=False, timeout=30)
         if not res.ok:
             return []
@@ -376,7 +376,7 @@ class K8s:
             })
         return out
 
-    def top_pods(self, all_namespaces: bool = True) -> list[dict[str, Any]]:
+    def top_pods(self, all_namespaces: bool = True) -> List[Dict[str, Any]]:
         args = ["top", "pods", "--no-headers"]
         if all_namespaces and not self.namespace:
             args.append("--all-namespaces")
@@ -399,7 +399,7 @@ class K8s:
     # ------------------------------------------------------------------ #
     #  Действия
     # ------------------------------------------------------------------ #
-    def logs(self, pod: str, namespace: str = "", container: str = "", tail: int = 300) -> dict[str, Any]:
+    def logs(self, pod: str, namespace: str = "", container: str = "", tail: int = 300) -> Dict[str, Any]:
         pod = safe_id(pod)
         if not pod:
             return {"ok": False, "error": t("k8s.badPod")}
@@ -414,13 +414,13 @@ class K8s:
             text = res.err
         return {"ok": res.ok or bool(text.strip()), "text": text, "error": "" if res.ok else res.error}
 
-    def describe(self, kind: str, name: str, namespace: str = "") -> dict[str, Any]:
+    def describe(self, kind: str, name: str, namespace: str = "") -> Dict[str, Any]:
         if kind.lower() not in _KIND_ALLOWED or not safe_id(name):
             return {"ok": False, "error": t("k8s.unsupportedResource")}
         res = self._kubectl(["describe", kind, name], timeout=45, namespace=namespace or None)
         return {"ok": res.ok, "text": res.out or res.err, "error": "" if res.ok else res.error}
 
-    def scale(self, kind: str, name: str, replicas: int, namespace: str = "") -> dict[str, Any]:
+    def scale(self, kind: str, name: str, replicas: int, namespace: str = "") -> Dict[str, Any]:
         if kind.lower() not in ("deployment", "statefulset", "replicaset", "deployments", "statefulsets"):
             return {"ok": False, "error": t("k8s.scaleOnly")}
         if not safe_id(name):
@@ -430,19 +430,19 @@ class K8s:
                             timeout=60, namespace=namespace or None)
         return {"ok": res.ok, "out": res.out.strip(), "error": "" if res.ok else (res.err or res.error)[:400]}
 
-    def rollout_restart(self, kind: str, name: str, namespace: str = "") -> dict[str, Any]:
+    def rollout_restart(self, kind: str, name: str, namespace: str = "") -> Dict[str, Any]:
         if kind.lower() not in ("deployment", "statefulset", "daemonset") or not safe_id(name):
             return {"ok": False, "error": t("k8s.rolloutOnly")}
         res = self._kubectl(["rollout", "restart", f"{kind}/{name}"], timeout=60, namespace=namespace or None)
         return {"ok": res.ok, "out": res.out.strip(), "error": "" if res.ok else (res.err or res.error)[:400]}
 
-    def rollout_undo(self, kind: str, name: str, namespace: str = "") -> dict[str, Any]:
+    def rollout_undo(self, kind: str, name: str, namespace: str = "") -> Dict[str, Any]:
         if not safe_id(name):
             return {"ok": False, "error": t("k8s.badName")}
         res = self._kubectl(["rollout", "undo", f"{kind}/{name}"], timeout=60, namespace=namespace or None)
         return {"ok": res.ok, "out": res.out.strip(), "error": "" if res.ok else (res.err or res.error)[:400]}
 
-    def delete(self, kind: str, name: str, namespace: str = "") -> dict[str, Any]:
+    def delete(self, kind: str, name: str, namespace: str = "") -> Dict[str, Any]:
         if not self.cfg.get("safety.allow_k8s_delete", True):
             return {"ok": False, "error": t("k8s.deleteDisabled")}
         if kind.lower() not in _KIND_ALLOWED:
@@ -455,15 +455,15 @@ class K8s:
     # ------------------------------------------------------------------ #
     #  Манифесты
     # ------------------------------------------------------------------ #
-    def _guard_manifest(self, path: Path) -> str | None:
+    def _guard_manifest(self, path: Path) -> Optional[str]:
         resolved = Path(path).resolve()
-        if not resolved.is_relative_to(HOME_DIR.resolve()):
+        if not is_within(resolved, HOME_DIR):
             return t("k8s.manifestOutside")
         if resolved.suffix not in (".yaml", ".yml", ".json") or not resolved.is_file():
             return t("k8s.manifestExpected")
         return None
 
-    def apply_file(self, path: Path, dry_run: bool = False) -> dict[str, Any]:
+    def apply_file(self, path: Path, dry_run: bool = False) -> Dict[str, Any]:
         guard = self._guard_manifest(path)
         if guard:
             return {"ok": False, "error": guard}
@@ -474,7 +474,7 @@ class K8s:
         return {"ok": res.ok, "out": (res.out or "").strip(), "text": (res.out or "") + (res.err or ""),
                 "error": "" if res.ok else (res.err or res.error)[:600]}
 
-    def delete_file(self, path: Path, dry_run: bool = False) -> dict[str, Any]:
+    def delete_file(self, path: Path, dry_run: bool = False) -> Dict[str, Any]:
         guard = self._guard_manifest(path)
         if guard:
             return {"ok": False, "error": guard}
@@ -487,7 +487,7 @@ class K8s:
         return {"ok": res.ok, "out": (res.out or "").strip(), "text": (res.out or "") + (res.err or ""),
                 "error": "" if res.ok else (res.err or res.error)[:600]}
 
-    def contexts(self) -> dict[str, Any]:
+    def contexts(self) -> Dict[str, Any]:
         res = self._kubectl(["config", "get-contexts", "-o", "name"], timeout=20, use_namespace=False)
         if not res.ok:
             return {"ok": False, "items": [], "error": (res.err or res.error)[:300]}
@@ -495,7 +495,7 @@ class K8s:
         return {"ok": True, "items": res.lines(), "current": (current.out or "").strip(),
                 "selected": self.context or t("k8s.defaultContext")}
 
-    def set_target(self, context: str = "", namespace: str = "") -> dict[str, Any]:
+    def set_target(self, context: str = "", namespace: str = "") -> Dict[str, Any]:
         """Переключает context/namespace; пустая строка сбрасывает к значению по умолчанию."""
         if context is not None:
             if context and not re.match(r"^[A-Za-z0-9@._:/-]{1,128}$", context):
@@ -528,8 +528,8 @@ class CachedK8s:
 
     def __init__(self, k8s: K8s) -> None:
         self.k8s = k8s
-        self._store: dict[str, tuple[float, Any]] = {}
-        self._locks: dict[str, threading.Lock] = {}
+        self._store: Dict[str, Tuple[float, Any]] = {}
+        self._locks: Dict[str, threading.Lock] = {}
 
     def get(self, key: str, factory, ttl: float = _CACHE_TTL) -> Any:
         now = time.time()

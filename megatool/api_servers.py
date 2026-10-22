@@ -12,7 +12,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, Body, HTTPException, Request
 
@@ -63,15 +63,15 @@ def _remote_allowed(cfg: Any) -> bool:
     return bool(cfg.get("safety.allow_remote_exec", True))
 
 
-def _fail(message: str, **extra: Any) -> dict[str, Any]:
+def _fail(message: str, **extra: Any) -> Dict[str, Any]:
     return {"ok": False, "error": message, **extra}
 
 
-def _body(value: Any) -> dict[str, Any]:
+def _body(value: Any) -> Dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
-def _task_ids(body: dict[str, Any]) -> list[str]:
+def _task_ids(body: Dict[str, Any]) -> List[str]:
     raw = body.get("tasks")
     if isinstance(raw, str):
         raw = [raw]
@@ -80,7 +80,7 @@ def _task_ids(body: dict[str, Any]) -> list[str]:
     return [str(item) for item in raw if str(item).strip()]
 
 
-def _server_or_error(manager: ServersManager, server_id: str) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+def _server_or_error(manager: ServersManager, server_id: str) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
     server = manager.get(server_id)
     if not server:
         return None, _fail(t("servers.notFound"))
@@ -92,7 +92,7 @@ def _server_or_error(manager: ServersManager, server_id: str) -> tuple[dict[str,
 # --------------------------------------------------------------------------- #
 
 @router.get("")
-def servers_list(request: Request) -> dict[str, Any]:
+def servers_list(request: Request) -> Dict[str, Any]:
     runtime = _runtime(request)
     manager = _manager(runtime)
     ssh = ssh_available(runtime.cfg)
@@ -110,7 +110,7 @@ def servers_list(request: Request) -> dict[str, Any]:
 
 
 @router.post("")
-def servers_add(request: Request, body: dict[str, Any] = Body(default={})) -> dict[str, Any]:
+def servers_add(request: Request, body: Dict[str, Any] = Body(default={})) -> Dict[str, Any]:
     runtime = _runtime(request)
     manager = _manager(runtime)
     result = manager.add(_body(body))
@@ -121,7 +121,7 @@ def servers_add(request: Request, body: dict[str, Any] = Body(default={})) -> di
 
 
 @router.patch("/{sid}")
-def servers_update(request: Request, sid: str, body: dict[str, Any] = Body(default={})) -> dict[str, Any]:
+def servers_update(request: Request, sid: str, body: Dict[str, Any] = Body(default={})) -> Dict[str, Any]:
     runtime = _runtime(request)
     manager = _manager(runtime)
     result = manager.update(sid, _body(body))
@@ -132,7 +132,7 @@ def servers_update(request: Request, sid: str, body: dict[str, Any] = Body(defau
 
 
 @router.delete("/{sid}")
-def servers_delete(request: Request, sid: str) -> dict[str, Any]:
+def servers_delete(request: Request, sid: str) -> Dict[str, Any]:
     runtime = _runtime(request)
     manager = _manager(runtime)
     server = manager.get(sid) or {}
@@ -147,7 +147,7 @@ def servers_delete(request: Request, sid: str) -> dict[str, Any]:
 # --------------------------------------------------------------------------- #
 
 @router.get("/tasks")
-def servers_tasks(request: Request, sid: str = "") -> dict[str, Any]:
+def servers_tasks(request: Request, sid: str = "") -> Dict[str, Any]:
     """Локализованный каталог задач (без текста скриптов)."""
     runtime = _runtime(request)
     manager = _manager(runtime)
@@ -161,7 +161,7 @@ def servers_tasks(request: Request, sid: str = "") -> dict[str, Any]:
 # --------------------------------------------------------------------------- #
 
 @router.post("/{sid}/check")
-def servers_check(request: Request, sid: str) -> dict[str, Any]:
+def servers_check(request: Request, sid: str) -> Dict[str, Any]:
     """Синхронная проверка доступности и инвентаря (timeout 30 с)."""
     runtime = _runtime(request)
     manager = _manager(runtime)
@@ -182,7 +182,7 @@ def servers_check(request: Request, sid: str) -> dict[str, Any]:
 
 
 @router.post("/{sid}/run")
-def servers_run(request: Request, sid: str, body: dict[str, Any] = Body(default={})) -> dict[str, Any]:
+def servers_run(request: Request, sid: str, body: Dict[str, Any] = Body(default={})) -> Dict[str, Any]:
     """Запускает набор задач: dry_run возвращает скрипт, иначе создаёт задачу."""
     runtime = _runtime(request)
     manager = _manager(runtime)
@@ -227,7 +227,7 @@ def servers_run(request: Request, sid: str, body: dict[str, Any] = Body(default=
 
 
 @router.post("/{sid}/exec")
-def servers_exec(request: Request, sid: str, body: dict[str, Any] = Body(default={})) -> dict[str, Any]:
+def servers_exec(request: Request, sid: str, body: Dict[str, Any] = Body(default={})) -> Dict[str, Any]:
     """Свободная команда на сервере (риск высокий, UI подтверждает)."""
     runtime = _runtime(request)
     manager = _manager(runtime)
@@ -255,7 +255,7 @@ def servers_exec(request: Request, sid: str, body: dict[str, Any] = Body(default
 
 
 @router.post("/{sid}/playbook")
-def servers_playbook(request: Request, sid: str, body: dict[str, Any] = Body(default={})) -> dict[str, Any]:
+def servers_playbook(request: Request, sid: str, body: Dict[str, Any] = Body(default={})) -> Dict[str, Any]:
     """Ansible-плейбук с теми же задачами (генерация локальная)."""
     runtime = _runtime(request)
     manager = _manager(runtime)

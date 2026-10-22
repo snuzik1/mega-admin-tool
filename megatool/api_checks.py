@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Dict
 
 from fastapi import APIRouter, Body, Request
 
@@ -16,7 +16,7 @@ from .i18n import t
 router = APIRouter(prefix="/api")
 
 
-def _ok(data: Any = None, **extra: Any) -> dict[str, Any]:
+def _ok(data: Any = None, **extra: Any) -> Dict[str, Any]:
     payload = {"ok": True}
     if data is not None:
         payload["data"] = data
@@ -24,20 +24,20 @@ def _ok(data: Any = None, **extra: Any) -> dict[str, Any]:
     return payload
 
 
-def _fail(message: str, **extra: Any) -> dict[str, Any]:
+def _fail(message: str, **extra: Any) -> Dict[str, Any]:
     payload = {"ok": False, "error": message}
     payload.update(extra)
     return payload
 
 
 @router.get("/checks")
-def checks_get(request: Request) -> dict[str, Any]:
+def checks_get(request: Request) -> Dict[str, Any]:
     manager = request.app.state.rt.checks
     return _ok(manager.snapshot())
 
 
 @router.put("/checks")
-def checks_put(request: Request, body: dict[str, Any] = Body(default={})) -> dict[str, Any]:
+def checks_put(request: Request, body: Dict[str, Any] = Body(default={})) -> Dict[str, Any]:
     manager = request.app.state.rt.checks
     raw = body.get("checks")
     _items, error = manager.save(raw)
@@ -49,7 +49,7 @@ def checks_put(request: Request, body: dict[str, Any] = Body(default={})) -> dic
 
 
 @router.post("/checks/run")
-def checks_run(request: Request, body: dict[str, Any] = Body(default={})) -> dict[str, Any]:
+def checks_run(request: Request, body: Dict[str, Any] = Body(default={})) -> Dict[str, Any]:
     manager = request.app.state.rt.checks
     check_id = str(body.get("id") or "").strip()
     if check_id:

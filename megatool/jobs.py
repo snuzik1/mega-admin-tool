@@ -17,7 +17,7 @@ import uuid
 from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Union
 
 try:
     import psutil  # type: ignore
@@ -39,30 +39,30 @@ MAX_LINES = 4000
 class Job:
     id: str
     title: str
-    cmd: list[str]
+    cmd: List[str]
     kind: str = "generic"
     cwd: str = ""
     status: str = "pending"          # pending | running | success | failed | cancelled
-    exit_code: int | None = None
+    exit_code: Optional[int] = None
     created: float = field(default_factory=time.time)
-    started: float | None = None
-    finished: float | None = None
+    started: Optional[float] = None
+    finished: Optional[float] = None
     error: str = ""
-    meta: dict[str, Any] = field(default_factory=dict)
-    lines: deque[dict[str, Any]] = field(default_factory=lambda: deque(maxlen=MAX_LINES))
-    log_path: Path | None = None
-    _proc: subprocess.Popen | None = None
-    _subs: list[queue.Queue] = field(default_factory=list)
+    meta: Dict[str, Any] = field(default_factory=dict)
+    lines: deque[Dict[str, Any]] = field(default_factory=lambda: deque(maxlen=MAX_LINES))
+    log_path: Optional[Path] = None
+    _proc: Optional[subprocess.Popen] = None
+    _subs: List[queue.Queue] = field(default_factory=list)
     _lock: threading.RLock = field(default_factory=threading.RLock)
 
     # ------------------------------------------------------------------ #
     @property
-    def duration(self) -> float | None:
+    def duration(self) -> Optional[float]:
         if self.started is None:
             return None
         return (self.finished or time.time()) - self.started
 
-    def to_dict(self, include_cmd: bool = True) -> dict[str, Any]:
+    def to_dict(self, include_cmd: bool = True) -> Dict[str, Any]:
         data = {
             "id": self.id,
             "title": self.title,
@@ -125,8 +125,8 @@ class JobManager:
         self.runs_dir = ensure_dir(runs_dir)
         self.keep = keep
         self.max_active = max(0, int(max_active or 0))
-        self._jobs: dict[str, Job] = {}
-        self._order: list[str] = []
+        self._jobs: Dict[str, Job] = {}
+        self._order: List[str] = []
         self._lock = threading.RLock()
         self._load_history()
 
@@ -178,11 +178,11 @@ class JobManager:
         self,
         title: str,
         cmd: Sequence[str],
-        cwd: str | os.PathLike | None = None,
+        cwd: Optional[Union[str, os.PathLike]] = None,
         kind: str = "generic",
-        meta: dict[str, Any] | None = None,
-        env: dict[str, str] | None = None,
-        stdin_text: str | None = None,
+        meta: Optional[Dict[str, Any]] = None,
+        env: Optional[Dict[str, str]] = None,
+        stdin_text: Optional[str] = None,
     ) -> Job:
         """Создаёт задачу и запускает её в отдельном потоке.
 
@@ -217,8 +217,8 @@ class JobManager:
             self._jobs.pop(old_id, None)
 
     # ------------------------------------------------------------------ #
-    def _execute(self, job: Job, env: dict[str, str] | None,
-                 stdin_text: str | None = None) -> None:
+    def _execute(self, job: Job, env: Optional[Dict[str, str]],
+                 stdin_text: Optional[str] = None) -> None:
         job.started = time.time()
         job.status = "running"
         self._persist(job)
@@ -318,7 +318,7 @@ class JobManager:
                 pass
 
     # ------------------------------------------------------------------ #
-    def cancel(self, job_id: str) -> dict[str, Any]:
+    def cancel(self, job_id: str) -> Dict[str, Any]:
         job = self.get(job_id)
         if not job:
             return {"ok": False, "error": t("jobs.notFound")}
@@ -364,18 +364,18 @@ class JobManager:
                 pass
 
     # ------------------------------------------------------------------ #
-    def get(self, job_id: str) -> Job | None:
+    def get(self, job_id: str) -> Optional[Job]:
         with self._lock:
             return self._jobs.get(job_id)
 
-    def list(self, limit: int = 40, kind: str | None = None) -> list[dict[str, Any]]:
+    def list(self, limit: int = 40, kind: Optional[str] = None) -> List[Dict[str, Any]]:
         with self._lock:
             items = [self._jobs[jid] for jid in reversed(self._order) if jid in self._jobs]
         if kind:
             items = [j for j in items if j.kind == kind]
         return [j.to_dict(include_cmd=False) for j in items[:limit]]
 
-    def log(self, job_id: str, tail: int = 400) -> dict[str, Any]:
+    def log(self, job_id: str, tail: int = 400) -> Dict[str, Any]:
         job = self.get(job_id)
         if not job:
             return {"ok": False, "error": t("jobs.notFound")}

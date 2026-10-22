@@ -16,7 +16,7 @@ import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Dict, List, Optional, Set, Tuple
 from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin, urlsplit, urlunsplit
 from urllib.request import HTTPSHandler, HTTPRedirectHandler, ProxyHandler, Request, build_opener
@@ -110,7 +110,7 @@ def _normalize_host(value: Any) -> str:
     return text
 
 
-def _target(item: dict[str, Any]) -> str:
+def _target(item: Dict[str, Any]) -> str:
     if item.get("type") == "http":
         return str(item.get("url") or "")
     host = str(item.get("host") or "")
@@ -119,15 +119,15 @@ def _target(item: dict[str, Any]) -> str:
     return f"{host}:{item.get('port')}"
 
 
-def clean_checks(raw: Any) -> tuple[list[dict[str, Any]], str]:
+def clean_checks(raw: Any) -> Tuple[List[Dict[str, Any]], str]:
     """Проверяет список проверок и возвращает (очищенный список, ошибка)."""
     if not isinstance(raw, list):
         return [], t("checks.badList")
     if len(raw) > MAX_CHECKS:
         return [], t("checks.tooMany", limit=MAX_CHECKS)
 
-    out: list[dict[str, Any]] = []
-    used: set[str] = set()
+    out: List[Dict[str, Any]] = []
+    used: Set[str] = set()
     for source in raw:
         if not isinstance(source, dict):
             return [], t("checks.badList")
@@ -135,7 +135,7 @@ def clean_checks(raw: Any) -> tuple[list[dict[str, Any]], str]:
         if kind not in CHECK_TYPES:
             return [], t("checks.badType")
 
-        item: dict[str, Any] = {
+        item: Dict[str, Any] = {
             "type": kind,
             "interval_sec": _int_value(source.get("interval_sec"), 60, MIN_INTERVAL, MAX_INTERVAL),
             "timeout_sec": round(_float_value(source.get("timeout_sec"), 5, MIN_TIMEOUT, MAX_TIMEOUT), 1),
@@ -180,7 +180,7 @@ def clean_checks(raw: Any) -> tuple[list[dict[str, Any]], str]:
 #  Сетевые проверки
 # --------------------------------------------------------------------------- #
 
-def _failure(reason: str, latency_ms: float, **params: Any) -> dict[str, Any]:
+def _failure(reason: str, latency_ms: float, **params: Any) -> Dict[str, Any]:
     return {
         "ok": False,
         "warn": False,
@@ -190,7 +190,7 @@ def _failure(reason: str, latency_ms: float, **params: Any) -> dict[str, Any]:
     }
 
 
-def _http_probe(item: dict[str, Any]) -> dict[str, Any]:
+def _http_probe(item: Dict[str, Any]) -> Dict[str, Any]:
     started = time.perf_counter()
     verify = bool(item.get("verify_tls", True))
     context = ssl.create_default_context()
@@ -241,7 +241,7 @@ def _http_probe(item: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _tcp_probe(item: dict[str, Any]) -> dict[str, Any]:
+def _tcp_probe(item: Dict[str, Any]) -> Dict[str, Any]:
     started = time.perf_counter()
     host = str(item["host"])
     port = int(item["port"])
@@ -260,7 +260,7 @@ def _tcp_probe(item: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _cert_expiry(cert: dict[str, Any], der: bytes | None) -> float | None:
+def _cert_expiry(cert: Dict[str, Any], der: Optional[bytes]) -> Optional[float]:
     not_after = str(cert.get("notAfter") or "")
     if not_after:
         try:
@@ -280,7 +280,7 @@ def _cert_expiry(cert: dict[str, Any], der: bytes | None) -> float | None:
     return None
 
 
-def _tls_probe(item: dict[str, Any]) -> dict[str, Any]:
+def _tls_probe(item: Dict[str, Any]) -> Dict[str, Any]:
     started = time.perf_counter()
     verify = bool(item.get("verify_tls", True))
     context = ssl.create_default_context()
@@ -325,7 +325,7 @@ def _tls_probe(item: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _probe(item: dict[str, Any]) -> dict[str, Any]:
+def _probe(item: Dict[str, Any]) -> Dict[str, Any]:
     kind = item.get("type")
     if kind == "http":
         return _http_probe(item)
@@ -346,13 +346,13 @@ class ChecksManager:
     def __init__(self, cfg) -> None:
         self.cfg = cfg
         self._lock = threading.RLock()
-        self._items: list[dict[str, Any]] = []
-        self._results: dict[str, dict[str, Any]] = {}
-        self._history: dict[str, Any] = {}
-        self._last_started: dict[str, float] = {}
-        self._running: set[str] = set()
+        self._items: List[Dict[str, Any]] = []
+        self._results: Dict[str, Dict[str, Any]] = {}
+        self._history: Dict[str, Any] = {}
+        self._last_started: Dict[str, float] = {}
+        self._running: Set[str] = set()
         self._stop = threading.Event()
-        self._thread: threading.Thread | None = None
+        self._thread: Optional[threading.Thread] = None
         self._pool = ThreadPoolExecutor(max_workers=6, thread_name_prefix="megatool-check")
         self.reload()
 
@@ -367,7 +367,7 @@ class ChecksManager:
             self._last_started = {key: value for key, value in self._last_started.items() if key in ids}
             self._running &= ids
 
-    def save(self, raw: Any) -> tuple[list[dict[str, Any]], str]:
+    def save(self, raw: Any) -> Tuple[List[Dict[str, Any]], str]:
         items, error = clean_checks(raw)
         if error:
             return [], error
@@ -390,13 +390,13 @@ class ChecksManager:
         if self._thread:
             self._thread.join(timeout=2.0)
             self._thread = None
-        self._pool.shutdown(wait=False, cancel_futures=True)
+        self._pool.shutdown(wait=False)
 
     # ------------------------------------------------------------------ #
     def _loop(self) -> None:
         while not self._stop.is_set():
             now = time.monotonic()
-            due: list[dict[str, Any]] = []
+            due: List[Dict[str, Any]] = []
             with self._lock:
                 for item in self._items:
                     if not item.get("enabled", True) or item["id"] in self._running:
@@ -411,19 +411,19 @@ class ChecksManager:
                 self._pool.submit(self._run_one, item)
             self._stop.wait(1.0)
 
-    def _run_one(self, item: dict[str, Any]) -> None:
+    def _run_one(self, item: Dict[str, Any]) -> None:
         result = self._probe_safe(item)
         self._store(item["id"], result)
         with self._lock:
             self._running.discard(item["id"])
 
-    def _probe_safe(self, item: dict[str, Any]) -> dict[str, Any]:
+    def _probe_safe(self, item: Dict[str, Any]) -> Dict[str, Any]:
         try:
             return _probe(item)
         except Exception as exc:  # pragma: no cover - защита фонового потока
             return _failure("checks.detail.error", 0.0, error=str(exc)[:300])
 
-    def _store(self, check_id: str, result: dict[str, Any]) -> None:
+    def _store(self, check_id: str, result: Dict[str, Any]) -> None:
         now = time.time()
         entry = dict(result)
         entry["checked_ts"] = now
@@ -445,7 +445,7 @@ class ChecksManager:
             self._results[check_id] = entry
 
     # ------------------------------------------------------------------ #
-    def run(self, check_id: str) -> dict[str, Any] | None:
+    def run(self, check_id: str) -> Optional[Dict[str, Any]]:
         with self._lock:
             item = next((dict(entry) for entry in self._items if entry["id"] == check_id), None)
         if not item:
@@ -453,7 +453,7 @@ class ChecksManager:
         self._store(check_id, self._probe_safe(item))
         return self.snapshot()
 
-    def run_all(self) -> dict[str, Any]:
+    def run_all(self) -> Dict[str, Any]:
         with self._lock:
             items = [dict(entry) for entry in self._items if entry.get("enabled", True)]
         if items:
@@ -464,7 +464,7 @@ class ChecksManager:
         return self.snapshot()
 
     # ------------------------------------------------------------------ #
-    def summary(self) -> dict[str, int]:
+    def summary(self) -> Dict[str, int]:
         with self._lock:
             items = [dict(entry) for entry in self._items]
             results = {key: dict(value) for key, value in self._results.items()}
@@ -484,7 +484,7 @@ class ChecksManager:
                 counts["up"] += 1
         return counts
 
-    def snapshot(self) -> dict[str, Any]:
+    def snapshot(self) -> Dict[str, Any]:
         with self._lock:
             items = [dict(entry) for entry in self._items]
             results = {key: dict(value) for key, value in self._results.items()}
@@ -509,7 +509,7 @@ class ChecksManager:
             output.append(row)
         return {"items": output, "summary": self.summary(), "checked": latest}
 
-    def alerts(self) -> list[dict[str, Any]]:
+    def alerts(self) -> List[Dict[str, Any]]:
         with self._lock:
             items = [dict(entry) for entry in self._items]
             results = {key: dict(value) for key, value in self._results.items()}

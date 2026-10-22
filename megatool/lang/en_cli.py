@@ -10,7 +10,7 @@ DATA = {
         "modeExternal": "External address",
         "settings": "Settings:       {path}",
         "stopHint": "Stop:           {keys}",
-        "networkWarning": "WARNING: the app is reachable over the network — enable a token in settings (the \"Access\" section).",
+        "networkWarning": "WARNING: the app is reachable over the network — restrict access with a firewall.",
         "stoppedByUser": "Stopped by user",
     },
 }

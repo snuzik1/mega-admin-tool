@@ -4,10 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "megatool"
-version = "0.6.0"
+version = "0.7.0"
 description = "MegaTool — открытая консоль системного администратора и DevOps (мониторинг, контейнеры, балансировка, конфиги, Ansible, Kubernetes)"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.8"
 license = { text = "MIT" }
 authors = [{ name = "MegaTool contributors" }]
 keywords = [
@@ -24,6 +24,8 @@ classifiers = [
     "Natural Language :: Russian",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -33,18 +35,30 @@ classifiers = [
     "Topic :: System :: Systems Administration",
 ]
 dependencies = [
-    "fastapi>=0.115",
-    "uvicorn>=0.30",
-    "websockets>=12",
-    "psutil>=5.9",
-    "PyYAML>=6.0",
+    "fastapi>=0.115,<0.117",
+    "uvicorn>=0.30,<0.34",
+    "websockets>=12,<14",
+    "psutil>=5.9,<8",
+    "PyYAML>=6.0,<7",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "httpx>=0.27", "ruff>=0.6", "esprima>=4.0"]
+dev = [
+    "pytest>=8.0,<8.4",
+    "httpx>=0.27,<0.29",
+    "ruff>=0.6",
+    "esprima>=4.0,<5",
+    "build>=1.2,<2",
+]
 
 [project.scripts]
 megatool = "megatool.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/snuzik1/mega-admin-tool"
+Repository = "https://github.com/snuzik1/mega-admin-tool"
+Issues = "https://github.com/snuzik1/mega-admin-tool/issues"
+Changelog = "https://github.com/snuzik1/mega-admin-tool/blob/main/CHANGELOG.md"
 
 [tool.setuptools]
 packages = ["megatool", "megatool.lang"]
@@ -55,7 +69,7 @@ addopts = "-q"
 filterwarnings = ["ignore::DeprecationWarning"]
 
 [tool.ruff]
-target-version = "py310"
+target-version = "py38"
 line-length = 120
 exclude = [".venv", "venv", "build", "dist", "runs"]
 

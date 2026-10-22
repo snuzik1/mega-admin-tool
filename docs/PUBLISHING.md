@@ -7,7 +7,8 @@ MegaTool.
 
 - `LICENSE` (MIT), `README.md`, `SECURITY.md`, `CONTRIBUTING.md`;
 - `.gitignore`, `.gitattributes`, `.editorconfig`;
-- GitHub Actions: `.github/workflows/ci.yml` (Linux/Windows, Python 3.10/3.12/3.14);
+- GitHub Actions: `.github/workflows/ci.yml` (Ubuntu/Windows/macOS; Python 3.8/3.12/3.14,
+  на macOS — 3.12/3.14);
 - шаблоны Issue и Pull Request, Dependabot;
 - `docs/GUIDE.md` и `docs/ARCHITECTURE.md`;
 - `CHANGELOG.md` для первого релиза.
@@ -15,62 +16,50 @@ MegaTool.
 Перед публикацией **проверьте**, что в репозиторий не попали:
 
 - `.venv/`, `.pytest_cache/`, `.ruff_cache/`, `__pycache__/`;
-- `~/.megatool/`, `access.json`, `config.json`, журналы и дампы;
+- `~/.megatool/`, `config.json`, журналы и дампы;
 - токены, пароли, SSH-ключи и файлы `.env`;
 - личные абсолютные пути вида `C:\Users\...`.
 
-## 2. Создайте локальный репозиторий
+## 2. Репозиторий и проверка
 
-В каталоге проекта:
+Рабочий репозиторий: <https://github.com/snuzik1/mega-admin-tool>. Remote
+`origin` уже указывает на него:
 
 ```bash
-git init -b main
-git add .
+git remote -v
 git status --short
-git commit -m "MegaTool 0.6.0"
 ```
 
 `git status` перед коммитом должен показывать только исходники, документацию и
 конфигурацию CI. Если в списке есть `.venv` или кэши — проверьте `.gitignore`.
 
-## 3. Создайте репозиторий на GitHub
+Перед публикацией выполните:
 
-1. Откройте GitHub → **New repository**.
-2. Имя: `megatool` (или выберите своё).
-3. Описание, например:
-   `Self-hosted sysadmin and DevOps console: monitoring, Docker/Podman, load balancer, configs, Ansible, Kubernetes — one Python process, no build step.`
-4. Видимость: **Public**, если проект должен быть открытым.
-5. Не добавляйте README, `.gitignore` и лицензию через GitHub — они уже есть в
-   проекте.
+```powershell
+.venv\Scripts\python.exe -m pytest -q
+.venv\Scripts\python.exe -m ruff check .
+.venv\Scripts\python.exe scripts\jscheck.py
+.venv\Scripts\python.exe scripts\startup_matrix.py
+```
 
-Затем привяжите remote и отправьте `main`:
+## 3. Опубликуйте main
 
 ```bash
-git remote add origin git@github.com:OWNER/megatool.git
 git push -u origin main
 ```
 
-Для HTTPS используйте URL вида
-`https://github.com/OWNER/megatool.git`. Замените `OWNER` на свой аккаунт или
-организацию.
+После первого push дождитесь зелёного CI и включите рекомендуемые настройки
+репозитория из раздела 5.
 
-## 4. Обновите ссылки
+## 4. Ссылки и бейдж
 
-После выбора `OWNER/REPO` замените placeholder в команде клонирования в
-`README.md`:
+В `README.md` уже указаны команда клонирования и CI-бейдж, а в
+`pyproject.toml` — раздел `[project.urls]` с Homepage, Repository, Issues и
+Changelog. При смене владельца или имени репозитория обновите их согласованно.
 
-```text
-https://github.com/OWNER/megatool.git
-```
-
-При желании добавьте в README бейдж CI:
-
-```markdown
-[![CI](https://github.com/OWNER/megatool/actions/workflows/ci.yml/badge.svg)](https://github.com/OWNER/megatool/actions/workflows/ci.yml)
-```
-
-Если планируете публиковать пакет на PyPI, добавьте `[project.urls]` в
-`pyproject.toml` с реальными ссылками на репозиторий и Issues.
+Релиз 0.7.0 публикуется через GitHub Release. PyPI-пакет пока не готов: `web/`
+не попадает в wheel, поэтому не загружайте собранный wheel на PyPI без
+исправления package-data и проверки отдачи интерфейса.
 
 ## 5. Настройте репозиторий
 
@@ -94,12 +83,12 @@ https://github.com/OWNER/megatool.git
 2. Создайте тег и GitHub Release:
 
 ```bash
-git tag -a v0.6.0 -m "MegaTool 0.6.0"
-git push origin v0.6.0
+git tag -a v0.7.0 -m "MegaTool 0.7.0"
+git push origin v0.7.0
 ```
 
-3. В GitHub → **Releases → Draft a new release** выберите тег `v0.6.0`,
-   вставьте раздел `0.6.0` из [CHANGELOG.md](../CHANGELOG.md) и опубликуйте.
+3. В GitHub → **Releases → Draft a new release** выберите тег `v0.7.0`,
+   вставьте раздел `0.7.0` из [CHANGELOG.md](../CHANGELOG.md) и опубликуйте.
 
 ## 7. Если секрет уже попал в репозиторий
 
@@ -117,10 +106,5 @@ git remote -v
 git push -u origin main
 ```
 
-Если GitHub CLI установлен, можно создать репозиторий без веб-интерфейса:
-
-```bash
-gh repo create megatool --public --source=. --remote=origin --push
-```
-
-Но сначала убедитесь, что GitHub CLI авторизован и выбран правильный аккаунт.
+Репозиторий уже создан. Повторный `gh repo create` не нужен: для релиза
+используйте тег и GitHub Releases из раздела 6.

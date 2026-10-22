@@ -2,7 +2,7 @@
 
 export default {
   configs: {
-    title: "Конфиги",
+    title: "Файлы и конфиги",
     subtitle: "Рабочий каталог MegaTool: {home}",
     filesCard: "Файлы",
     editorCard: "Редактор",

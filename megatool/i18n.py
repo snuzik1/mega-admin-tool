@@ -10,17 +10,18 @@
 
 from __future__ import annotations
 
+import functools
 import importlib
 import pkgutil
 import sys
-from typing import Any
+from typing import Any, Dict, List, Optional
 
 _LANG = "ru"
-_DICTS: dict[str, dict[str, Any]] = {"ru": {}, "en": {}}
+_DICTS: Dict[str, Dict[str, Any]] = {"ru": {}, "en": {}}
 _LOADED = False
 
 
-def _deep_merge(base: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
+def _deep_merge(base: Dict[str, Any], patch: Dict[str, Any]) -> Dict[str, Any]:
     out = dict(base)
     for key, value in (patch or {}).items():
         if isinstance(value, dict) and isinstance(out.get(key), dict):
@@ -57,7 +58,7 @@ def _load_dicts() -> None:
             _DICTS[target] = _deep_merge(_DICTS[target], data)
 
 
-def languages() -> list[str]:
+def languages() -> List[str]:
     return ["ru", "en"]
 
 
@@ -65,7 +66,7 @@ def get_language() -> str:
     return _LANG
 
 
-def set_language(lang: str | None) -> str:
+def set_language(lang: Optional[str]) -> str:
     """Устанавливает язык сообщений; неизвестный код превращается в «ru»."""
     global _LANG
     _LANG = lang if lang in _DICTS else "ru"
@@ -82,7 +83,7 @@ def set_language(lang: str | None) -> str:
     return _LANG
 
 
-def _lookup(dictionary: dict[str, Any], path: str) -> Any:
+def _lookup(dictionary: Dict[str, Any], path: str) -> Any:
     node: Any = dictionary
     for part in str(path).split("."):
         if not isinstance(node, dict) or part not in node:
@@ -91,15 +92,21 @@ def _lookup(dictionary: dict[str, Any], path: str) -> Any:
     return node
 
 
+@functools.lru_cache(maxsize=4096)
+def _template(lang: str, key: str) -> Optional[str]:
+    """Готовый шаблон перевода (кэш: t() вызывается сотни раз в секунду)."""
+    value = _lookup(_DICTS.get(lang, {}), key)
+    if value is None:
+        value = _lookup(_DICTS["ru"], key)
+    return None if value is None else str(value)
+
+
 def t(key: str, **params: Any) -> str:
     """Перевод по ключу с подстановкой {параметров}."""
     _load_dicts()
-    value = _lookup(_DICTS.get(_LANG, {}), key)
-    if value is None:
-        value = _lookup(_DICTS["ru"], key)
-    if value is None:
+    text = _template(_LANG, key)
+    if text is None:
         return key
-    text = str(value)
     for name, item in params.items():
         text = text.replace("{" + name + "}", str(item))
     return text
@@ -109,12 +116,12 @@ def t(key: str, **params: Any) -> str:
 L = t
 
 
-def audit() -> dict[str, list[str]]:
+def audit() -> Dict[str, List[str]]:
     """Ключи, которых не хватает хотя бы в одном языке (проверка полноты)."""
     _load_dicts()
-    missing: dict[str, list[str]] = {"ru": [], "en": []}
+    missing: Dict[str, List[str]] = {"ru": [], "en": []}
 
-    def walk(node: dict[str, Any], prefix: str) -> None:
+    def walk(node: Dict[str, Any], prefix: str) -> None:
         for key, value in node.items():
             path = f"{prefix}.{key}" if prefix else key
             if isinstance(value, dict):

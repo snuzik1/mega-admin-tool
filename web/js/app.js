@@ -1,29 +1,27 @@
 /* Каркас интерфейса: боковое меню, верхняя панель, маршрутизация по хэшу,
    общий WebSocket метрик, тема, язык и системные уведомления. */
 
-import { api, openWS, session } from "./api.js";
-import { getLang, LANG_LABELS, setLang, SUPPORTED_LANGS, t } from "./i18n.js";
-import {
-  askPasswordChange, askToken, bus, button, can, fmtDuration, h, mount,
-  showSetupIfRequired, timeAgo, toast,
-} from "./ui.js";
+import { api, openWS } from "./api.js";
+import { getLang, setLang, SUPPORTED_LANGS, t } from "./i18n.js";
+import { bus, button, fmtDuration, h, modal, mount, timeAgo } from "./ui.js";
 
-/* Разделы приложения. Подписи и подсказки — из словарей (nav.<id>). */
+/* Разделы приложения. Подписи и подсказки — из словарей (nav.<id>).
+   Порядок внутри групп задаёт меню: сначала наблюдение, затем инфраструктура,
+   автоматизация и системные настройки. */
 const VIEWS = [
   { id: "dashboard", icon: "▤", module: "./views/dashboard.js", group: "monitoring" },
   { id: "checks", icon: "◎", module: "./views/checks.js", group: "monitoring" },
   { id: "hosts", icon: "▥", module: "./views/hosts.js", group: "monitoring" },
+  { id: "changes", icon: "◔", module: "./views/changes.js", group: "monitoring" },
+  { id: "jobs", icon: "▶", module: "./views/jobs.js", group: "monitoring" },
   { id: "containers", icon: "▣", module: "./views/containers.js", group: "infrastructure" },
+  { id: "k8s", icon: "☸", module: "./views/k8s.js", group: "infrastructure" },
   { id: "balancer", icon: "⇄", module: "./views/balancer.js", group: "infrastructure" },
   { id: "catalog", icon: "▦", module: "./views/catalog.js", group: "infrastructure" },
   { id: "bundles", icon: "▧", module: "./views/bundles.js", group: "automation" },
   { id: "configs", icon: "✎", module: "./views/configs.js", group: "automation" },
   { id: "ansible", icon: "◆", module: "./views/ansible.js", group: "automation" },
   { id: "servers", icon: "⌁", module: "./views/servers.js", group: "automation" },
-  { id: "k8s", icon: "☸", module: "./views/k8s.js", group: "automation" },
-  { id: "changes", icon: "◔", module: "./views/changes.js", group: "monitoring" },
-  { id: "jobs", icon: "▶", module: "./views/jobs.js", group: "monitoring" },
-  { id: "access", icon: "⚿", module: "./views/access.js", group: "app" },
   { id: "settings", icon: "⚙", module: "./views/settings.js", group: "app" },
 ];
 
@@ -34,8 +32,6 @@ const app = {
   cleanup: null,
   state: null,
   settings: null,
-  me: null,
-  access: null,
   metrics: { point: null, state: null, alerts: [] },
   themePref: "light",
   ws: null,
@@ -50,20 +46,42 @@ const app = {
 /*  Верхняя панель                                                        */
 /* --------------------------------------------------------------------- */
 
+function buildToolsMenu() {
+  const count = h("span", { class: "top-tools-count" }, "0/5");
+  const label = h("span", { class: "top-tools-label" }, t("top.tools"));
+  const summary = h("summary", {
+    class: "top-tools-summary",
+    title: t("top.toolsHint"),
+  },
+    h("span", { class: "top-tools-icon", "aria-hidden": "true" }, "⚙"),
+    h("span", { class: "top-tools-dot", "aria-hidden": "true" }), label, count);
+  const panel = h("div", { class: "top-tools-panel" });
+  const root = h("details", { class: "top-tools" }, summary, panel);
+  return { root, summary, panel, count, label };
+}
+
 function buildTopbar() {
   const host = h("span", { class: "top-host" }, "…");
   const version = h("span", { class: "top-version muted" }, "");
   const uptime = h("span", { class: "top-uptime" }, "—");
-  const alerts = h("button", { class: "top-alert", type: "button", onclick: () => (location.hash = "#/dashboard/alerts") }, "▲ 0");
-  const engines = h("span", { class: "top-flags" });
+  const alerts = h("button", {
+    class: "top-alert",
+    type: "button",
+    "aria-label": t("top.alerts", { n: 0 }),
+    onclick: () => (location.hash = "#/dashboard/alerts"),
+  }, "⚠ 0");
+  const tools = buildToolsMenu();
   const live = h("span", { class: "top-live" }, "○");
+  const helpButton = h("button", {
+    type: "button",
+    class: "top-help",
+    title: t("top.help"),
+    "aria-label": t("top.help"),
+    "aria-keyshortcuts": "F1",
+    onclick: () => openHelp(),
+  }, "?");
   const langButton = button(getLang().toUpperCase(), () => toggleLang(), { class: "top-lang", title: t("top.lang") });
   const themeButton = button("", () => toggleTheme(), { class: "top-theme", title: t("top.theme") });
-  const account = h("button", {
-    type: "button", class: "top-user", title: t("top.user"),
-    onclick: () => askPasswordChange(),
-  });
-  const logoutButton = button("⎋", () => signOut(), { class: "top-logout", title: t("top.logout") });
   // На узких экранах боковая панель прячется, а эта кнопка её открывает.
   const menuButton = h("button", {
     type: "button",
@@ -76,14 +94,14 @@ function buildTopbar() {
   const bar = h(
     "header",
     { class: "topbar" },
-    h("div", { class: "top-left" }, menuButton, h("strong", { class: "brand" }, "MEGATOOL"), version),
+    h("div", { class: "top-left" }, menuButton,
+      h("a", { class: "brand", href: "#/dashboard", title: t("nav.dashboard.title") }, "MEGATOOL"), version),
     h("div", { class: "top-mid" }, host, h("span", { class: "sep" }, "•"), uptime),
-    h("div", { class: "top-right" }, engines, alerts, live, account, logoutButton,
-      langButton, themeButton)
+    h("div", { class: "top-right" }, tools.root, alerts, live, helpButton, langButton, themeButton)
   );
   return {
-    bar, host, version, uptime, alerts, engines, live, account, logoutButton,
-    langButton, themeButton, menuButton,
+    bar, host, version, uptime, alerts, tools, live,
+    helpButton, langButton, themeButton, menuButton,
   };
 }
 
@@ -101,45 +119,67 @@ function toggleMobileNav(force) {
   if (menu) menu.setAttribute("aria-expanded", open ? "true" : "false");
 }
 
-function flag(name, available, title) {
-  return h("span", { class: `flag ${available ? "on" : "off"}`, title }, name);
-}
+function refreshTools(refs, state) {
+  if (!refs) return;
+  const rows = [];
+  const add = (label, stateName, status, detail = "") =>
+    rows.push({ label, state: stateName, status, detail });
+  const container = (state.engines && state.engines.engines) || {};
 
-function refreshAccount(refs) {
-  if (!refs || !refs.account) return;
-  const me = app.me || {};
-  const mode = me.mode || "local";
-  const visible = mode !== "local";
-  refs.account.style.display = visible ? "" : "none";
-  if (refs.logoutButton) refs.logoutButton.style.display = visible ? "" : "none";
-  if (!visible) return;
-  refs.account.disabled = mode !== "user";
-  if (mode === "master") {
-    refs.account.textContent = t("top.master");
-    refs.account.title = t("top.master");
-  } else {
-    const user = me.user || {};
-    const local = user.local_account ? ` · ${t("common.setup.account")}: ${user.local_account}` : "";
-    const owner = user.owner ? ` · ${t("top.owner")}` : "";
-    refs.account.textContent = user.display_name || user.username || "user";
-    refs.account.title = `${t("top.user")}: @${user.username || ""}${user.preset_name ? ` · ${user.preset_name}` : ""}${owner}${local} · ${t("top.password")}`;
+  for (const [id, label] of [["docker", "Docker"], ["podman", "Podman"]]) {
+    const info = container[id];
+    if (!info || !info.available) {
+      add(label, "off", t("top.toolsMissing"), (info && (info.error || info.binary)) || "");
+    } else if (info.daemon_ok === false) {
+      add(label, "warn", t("top.toolsDaemon"), info.error || info.binary || "");
+    } else {
+      add(label, "ok", t("top.toolsReady"), info.binary || "");
+    }
   }
-}
 
-async function signOut() {
-  try {
-    await api.post("/api/auth/logout");
-  } catch (error) {
-    /* мастер-токен или выключенная проверка — всё равно очищаем браузер */
-  }
-  session.token = "";
-  toast(t("common.auth.signedOut"), "success");
-  setTimeout(() => window.location.reload(), 300);
+  const k8s = state.k8s || {};
+  add("kubectl", k8s.available ? "ok" : "off",
+    k8s.available ? t("top.toolsFound") : t("top.toolsMissing"), k8s.version || "");
+
+  const ansible = state.ansible || {};
+  add("Ansible", ansible.available ? "ok" : "off",
+    ansible.available ? t("top.toolsFound") : t("top.toolsMissing"), ansible.version || "");
+
+  const noteKeys = new Set((state.notes || []).map((note) =>
+    (typeof note === "string" ? note : note && note.key) || ""));
+  const sshFound = !noteKeys.has("notes.noSsh");
+  add("SSH", sshFound ? "ok" : "off",
+    sshFound ? t("top.toolsFound") : t("top.toolsMissing"));
+
+  const ready = rows.filter((row) => row.state === "ok").length;
+  refs.count.textContent = `${ready}/${rows.length}`;
+  refs.root.dataset.state = ready === rows.length ? "ok" : "warn";
+  refs.summary.title = t("top.toolsHint");
+  refs.summary.setAttribute("aria-label", `${t("top.tools")}: ${ready}/${rows.length}`);
+  refs.label.textContent = t("top.tools");
+  mount(
+    refs.panel,
+    h("div", { class: "top-tools-head" },
+      h("strong", {}, t("top.toolsTitle")),
+      h("a", {
+        href: "#/settings/engines",
+        class: "top-tools-link",
+        onclick: () => { refs.root.open = false; },
+      }, t("top.toolsConfigure"))),
+    h("div", { class: "top-tools-rows" }, rows.map((row) =>
+      h("div", {
+        class: "tool-row",
+        title: [row.status, row.detail].filter(Boolean).join(" • "),
+      },
+        h("span", { class: `tool-dot ${row.state}`, "aria-hidden": "true" }),
+        h("span", { class: "tool-name" }, row.label),
+        h("span", { class: `tool-status ${row.state}` }, row.status)))),
+    h("div", { class: "top-tools-foot" }, t("top.toolsNote"))
+  );
 }
 
 function refreshTopbar(refs) {
   if (!refs) return;
-  refreshAccount(refs);
   const state = app.state;
   if (state) {
     const info = state.app || {};
@@ -149,20 +189,13 @@ function refreshTopbar(refs) {
     refs.uptime.textContent = t("top.uptime", { duration: fmtDuration(seconds) });
     const alerts = state.alerts || [];
     const critical = alerts.filter((item) => item.severity === "critical").length;
-    refs.alerts.textContent = `▲ ${alerts.length}`;
+    refs.alerts.textContent = `⚠ ${alerts.length}`;
+    refs.alerts.setAttribute("aria-label", t("top.alerts", { n: alerts.length }));
     refs.alerts.classList.toggle("has-critical", critical > 0);
     refs.alerts.title = alerts.length
       ? alerts.slice(0, 8).map((item) => `${item.severity}: ${item.title}`).join("\n")
       : t("top.noAlerts");
-    const engines = state.engines || {};
-    const active = engines.active;
-    mount(
-      refs.engines,
-      flag("D", Boolean(active === "docker"), "Docker"),
-      flag("P", Boolean(active === "podman" || (engines.engines && engines.engines.podman && engines.engines.podman.available)), "Podman"),
-      flag("K", Boolean(state.k8s && state.k8s.available), "kubectl"),
-      flag("A", Boolean(state.ansible && state.ansible.available), "Ansible")
-    );
+    refreshTools(refs.tools, state);
     const monitor = state.monitor || {};
     refs.host.textContent = monitor.hostname || state.hostname || "";
     refs.host.title = monitor.last_point_iso ? t("top.lastSample", { ago: timeAgo(monitor.last_point_iso) }) : "";
@@ -170,6 +203,10 @@ function refreshTopbar(refs) {
   if (refs.live) {
     refs.live.title = t("top.live");
     if (!refs.live.classList.contains("on")) refs.live.textContent = `○ ${t("top.offline")}`;
+  }
+  if (refs.helpButton) {
+    refs.helpButton.title = t("top.help");
+    refs.helpButton.setAttribute("aria-label", t("top.help"));
   }
   if (refs.langButton) {
     refs.langButton.textContent = getLang().toUpperCase();
@@ -179,6 +216,57 @@ function refreshTopbar(refs) {
     refs.themeButton.title = t("top.theme");
     refs.themeButton.textContent = themeGlyph(app.themePref, true);
   }
+}
+
+/* --------------------------------------------------------------------- */
+/*  Справка по интерфейсу                                                 */
+/* --------------------------------------------------------------------- */
+
+function openHelp() {
+  const groups = [
+    ["monitoring", t("nav.groups.monitoring")],
+    ["infrastructure", t("nav.groups.infrastructure")],
+    ["automation", t("nav.groups.automation")],
+    ["app", t("nav.groups.app")],
+  ];
+  const terms = [
+    ["checks", t("nav.checks.title")],
+    ["hosts", t("nav.hosts.title")],
+    ["servers", t("nav.servers.title")],
+    ["catalog", t("nav.catalog.title")],
+    ["bundles", t("nav.bundles.title")],
+    ["configs", t("nav.configs.title")],
+  ];
+  const shortcuts = [
+    ["theme", "Alt+T"],
+    ["help", "F1"],
+    ["escape", "Esc"],
+  ];
+  modal({
+    title: t("help.title"),
+    width: 660,
+    body: h("div", { class: "help" },
+      h("p", { class: "help-lead" }, t("help.lead")),
+      h("h4", {}, t("help.startTitle")),
+      h("ol", { class: "help-steps" },
+        ["overview", "checks", "hosts", "tools"].map((key) => h("li", {}, t(`help.start.${key}`)))),
+      h("h4", {}, t("help.groupsTitle")),
+      h("div", { class: "help-groups" }, groups.map(([key, label]) =>
+        h("div", { class: "help-group" },
+          h("b", {}, label),
+          h("span", {}, t(`help.groups.${key}`))))),
+      h("h4", {}, t("help.termsTitle")),
+      h("dl", { class: "help-terms" }, terms.map(([key, label]) =>
+        h("div", { class: "help-term" },
+          h("dt", {}, label),
+          h("dd", {}, t(`help.terms.${key}`))))),
+      h("h4", {}, t("help.shortcutsTitle")),
+      h("div", { class: "help-shortcuts" }, shortcuts.map(([key, keys]) =>
+        h("div", { class: "help-shortcut" },
+          h("span", {}, t(`help.shortcuts.${key}`)),
+          h("kbd", {}, keys))))),
+    actions: [{ label: t("common.buttons.close"), kind: "primary" }],
+  });
 }
 
 async function refreshState() {
@@ -254,7 +342,6 @@ async function toggleTheme() {
   const index = THEME_CYCLE.indexOf(app.themePref);
   const next = THEME_CYCLE[(index + 1) % THEME_CYCLE.length];
   applyTheme(next);
-  if (!can("settings", true)) return;
   try {
     await api.patch("/api/settings", { ui: { theme: next } });
   } catch (error) {
@@ -272,7 +359,7 @@ async function setLanguage(lang, { persist = true } = {}) {
   // есть, сохраняем язык и перезагружаем страницу (черновики лежат в sessionStorage).
   const hasDrafts = typeof app.hasUnsavedDraft === "function" && Boolean(app.hasUnsavedDraft());
   setLang(lang, { silent: true });
-  if (persist && can("settings", true)) {
+  if (persist) {
     try {
       await api.patch("/api/settings", { ui: { language: lang } });
     } catch (error) {
@@ -307,6 +394,8 @@ function renderNavLabels() {
   });
   const tagline = document.querySelector(".sidebar-tagline");
   if (tagline) tagline.textContent = t("top.tagline");
+  const notes = document.querySelector(".nav-notes");
+  if (notes) renderNotes(notes);
 }
 
 /* --------------------------------------------------------------------- */
@@ -381,23 +470,12 @@ function parseHash() {
 }
 
 function availableViews() {
-  return VIEWS.filter((view) => {
-    // Настройки и управление доступом — только с правом управления.
-    if (view.id === "settings" || view.id === "access") return can(view.id, true);
-    return can(view.id, false);
-  });
+  return VIEWS;
 }
 
 async function navigate() {
   const { id, args } = parseHash();
   const views = availableViews();
-  if (!views.length) {
-    const host = document.getElementById("view");
-    if (host) mount(host, h("div", { class: "view-body" },
-      h("div", { class: "notice notice-bad" }, t("top.noAccess"))));
-    document.title = "MEGATOOL";
-    return;
-  }
   const requested = VIEWS.find((item) => item.id === id);
   const view = (requested && views.includes(requested)) ? requested : views[0];
   if (requested && view.id !== requested.id) {
@@ -428,8 +506,12 @@ async function navigate() {
     }
     app.cleanup = null;
   }
-  document.querySelectorAll(".nav-item").forEach((element) =>
-    element.classList.toggle("active", element.dataset.view === view.id));
+  document.querySelectorAll(".nav-item").forEach((element) => {
+    const active = element.dataset.view === view.id;
+    element.classList.toggle("active", active);
+    if (active) element.setAttribute("aria-current", "page");
+    else element.removeAttribute("aria-current");
+  });
   document.title = `${t(`nav.${view.id}.title`)} — MEGATOOL`;
 
   // Каждый переход получает собственный контейнер: пока раздел грузится,
@@ -503,49 +585,33 @@ function startMetrics() {
 /* --------------------------------------------------------------------- */
 
 function renderNotes(host) {
+  if (!host) return;
   const notes = (app.state && app.state.notes) || [];
-  mount(host, notes.map((note) => {
-    const text = typeof note === "string" ? t(note) : t(note.key || "", note.params || {});
-    return h("p", { class: "note" }, text);
-  }));
-}
-
-async function loadAccess() {
-  // Если включён вход, но пользователей ещё нет, сначала предлагаем создать
-  // первого локального администратора. Это единственный публичный сценарий.
-  if (await showSetupIfRequired()) return false;
-  try {
-    const result = await api.get("/api/auth/me");
-    app.me = result.data || {};
-    app.access = app.me;
-    window.megatoolAccess = app.me;
-    return true;
-  } catch (error) {
-    app.me = null;
-    app.access = null;
-    window.megatoolAccess = null;
-    if (error && error.status === 401) {
-      askToken();
-      return false;
-    }
-    return true;
+  if (!notes.length) {
+    host.hidden = true;
+    return;
   }
+  host.hidden = false;
+  const keyOf = (note) => (typeof note === "string" ? note : (note && note.key) || "");
+  const issues = notes.filter((note) => keyOf(note) !== "notes.home").length;
+  mount(
+    host,
+    h("summary", { class: "nav-notes-summary", title: t("top.environmentHint") },
+      h("span", { class: "nav-notes-title" }, t("top.environment")),
+      issues ? h("span", { class: "nav-notes-count" }, String(issues)) : null,
+      h("span", { class: "nav-notes-chevron", "aria-hidden": "true" }, "›")),
+    h("div", { class: "nav-notes-body" }, notes.map((note) => {
+      const text = typeof note === "string" ? t(note) : t(note.key || "", note.params || {});
+      return h("p", { class: "note" }, text);
+    })),
+    h("a", { class: "nav-notes-link", href: "#/settings/engines" }, t("top.toolsSettings"))
+  );
 }
 
 async function boot() {
-  // Сначала узнаём пользователя и его права: от этого зависит меню.
-  if (!(await loadAccess())) return;
-
   const shell = h("div", { class: "shell" });
   const topbarRefs = buildTopbar();
   app.topbar = topbarRefs;
-  if (!can("dashboard", false)) {
-    // Сводка состояния и live-поток относятся только к дашборду.
-    const mid = topbarRefs.bar.querySelector(".top-mid");
-    for (const element of [mid, topbarRefs.alerts, topbarRefs.live]) {
-      if (element) element.style.display = "none";
-    }
-  }
 
   const nav = h("nav", { class: "nav" });
   const visible = availableViews();
@@ -563,12 +629,13 @@ async function boot() {
         }, h("span", { class: "nav-icon" }, view.icon), h("span", { class: "nav-label" }, t(`nav.${view.id}.title`))))));
   }
 
-  const notes = h("div", { class: "nav-notes" });
+  const notes = h("details", { class: "nav-notes", hidden: true });
   const view = h("main", { id: "view", class: "view" });
   const backdrop = h("div", { class: "nav-backdrop", onclick: () => toggleMobileNav(false) });
   shell.append(
     h("aside", { class: "sidebar" },
-      h("div", { class: "sidebar-brand" }, "MEGATOOL", h("small", { class: "sidebar-tagline" }, t("top.tagline"))),
+      h("a", { class: "sidebar-brand", href: "#/dashboard", title: t("nav.dashboard.title") },
+        "MEGATOOL", h("small", { class: "sidebar-tagline" }, t("top.tagline"))),
       nav, notes),
     backdrop,
     h("div", { class: "content" }, topbarRefs.bar, view)
@@ -580,7 +647,14 @@ async function boot() {
     if (event.target.closest(".nav-item")) toggleMobileNav(false);
   });
   window.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") toggleMobileNav(false);
+    if (event.key === "Escape") {
+      toggleMobileNav(false);
+      if (app.topbar && app.topbar.tools) app.topbar.tools.root.open = false;
+    }
+  });
+  document.addEventListener("click", (event) => {
+    const tools = app.topbar && app.topbar.tools && app.topbar.tools.root;
+    if (tools && tools.open && !tools.contains(event.target)) tools.open = false;
   });
   window.addEventListener("hashchange", () => toggleMobileNav(false));
   if (window.matchMedia) {
@@ -592,14 +666,11 @@ async function boot() {
     else if (desktop.addListener) desktop.addListener(onChange);  // старые браузеры
   }
 
-  if (can("settings", false)) {
-    try {
-      const payload = await api.get("/api/settings");
-      app.settings = (payload.data && payload.data.ui !== undefined ? payload.data : (payload.data || payload)) || {};
-    } catch (error) {
-      app.settings = null;
-      if (error.status === 401) toast(t("common.toast.tokenRequired"), "error", 8000);
-    }
+  try {
+    const payload = await api.get("/api/settings");
+    app.settings = (payload.data && payload.data.ui !== undefined ? payload.data : (payload.data || payload)) || {};
+  } catch (error) {
+    app.settings = null;
   }
   const ui = (app.settings && app.settings.ui) || {};
   // Язык: настройка сервера важнее локальной копии в браузере.
@@ -611,12 +682,8 @@ async function boot() {
   applyDensity(ui.density);
 
   refreshTopbar(topbarRefs);
-  if (can("dashboard", false)) {
-    await refreshState();
-    renderNotes(notes);
-  } else {
-    renderNotes(notes);
-  }
+  await refreshState();
+  renderNotes(notes);
 
   window.addEventListener("hashchange", () => {
     if (app.beforeNavigate) {
@@ -641,13 +708,16 @@ async function boot() {
   if (!location.hash) location.hash = "#/dashboard";
   await navigate();
 
-  if (can("dashboard", false)) {
-    startMetrics();
-    setInterval(refreshState, 20000);
-  }
+  startMetrics();
+  setInterval(refreshState, 20000);
 
   window.addEventListener("keydown", (event) => {
     if (event.key === "F5") return;
+    if (event.key === "F1" && !document.querySelector(".overlay")) {
+      event.preventDefault();
+      openHelp();
+      return;
+    }
     if (event.key === "t" && event.altKey) toggleTheme();
   });
 }

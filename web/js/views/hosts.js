@@ -4,7 +4,7 @@
 import { api } from "../api.js";
 import { t } from "../i18n.js";
 import {
-  badge, button, can, card, confirmDialog, empty, field, fmtDuration, fmtTime, guard, h, input,
+  badge, button, card, confirmDialog, empty, field, fmtDuration, fmtTime, guard, h, input,
   modal, mount, poller, select, table, timeAgo, toast,
 } from "../ui.js";
 
@@ -63,7 +63,6 @@ function durationCell(row, key, totalKey) {
 export async function render(root) {
   let snapshot = { items: [], summary: {}, checked: "" };
   let disposed = false;
-  const manage = can("hosts", true);
   const summaryHost = h("div", { class: "checks-summary" });
   const tableHost = h("div");
   const extraHost = h("span", { class: "muted small" });
@@ -85,8 +84,8 @@ export async function render(root) {
     if (!snapshot.items.length) {
       mount(tableHost, empty(t("hosts.empty"), {
         mark: "▥",
-        hint: manage ? t("hosts.emptyHint") : t("hosts.emptyHintReadonly"),
-        extra: manage ? button(t("hosts.add"), () => editDialog(), { kind: "primary", size: "sm" }) : null,
+        hint: t("hosts.emptyHint"),
+        extra: button(t("hosts.add"), () => editDialog(), { kind: "primary", size: "sm" }),
       }));
       return;
     }
@@ -118,7 +117,7 @@ export async function render(root) {
           render: (row) => row.last_check
             ? h("span", { class: "small", title: fmtTime(row.last_check) }, timeAgo(row.last_check))
             : h("span", { class: "muted small" }, t("common.dash")) },
-        ...(manage ? [{
+        {
           key: "actions", label: t("hosts.column.actions"), width: "280px", sortable: false,
           render: (row) => h("div", { class: "row row-wrap" },
             button(t("hosts.run"), () => runOne(row), {
@@ -129,7 +128,7 @@ export async function render(root) {
             }),
             button(t("common.buttons.edit"), () => editDialog(row), { size: "sm", kind: "ghost" }),
             button(t("common.buttons.delete"), () => remove(row), { size: "sm", kind: "danger" })),
-        }] : []),
+        },
       ],
       rows: snapshot.items,
       empty: t("hosts.empty"),
@@ -309,12 +308,12 @@ export async function render(root) {
 
   const head = h("div", { class: "view-head" },
     h("div", {},
-      h("h2", {}, t("hosts.title")),
-      h("p", { class: "muted" }, t("hosts.subtitle"))),
+      h("h1", { class: "view-title" }, t("hosts.title")),
+      h("div", { class: "view-sub" }, t("hosts.subtitle"))),
     h("div", { class: "toolbar" },
       button(t("hosts.refresh"), refresh, { size: "sm", kind: "ghost" }),
-      manage ? button(t("hosts.runAll"), runAll, { size: "sm", kind: "ghost" }) : null,
-      manage ? button(t("hosts.add"), () => editDialog(), { size: "sm", kind: "primary" }) : null));
+      button(t("hosts.runAll"), runAll, { size: "sm", kind: "ghost" }),
+      button(t("hosts.add"), () => editDialog(), { size: "sm", kind: "primary" })));
 
   mount(root, head,
     card(t("hosts.card"), h("div", { class: "col" }, summaryHost, tableHost), { extra: extraHost }));

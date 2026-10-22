@@ -34,7 +34,7 @@ export default {
     status: {
       notFound: "kubectl not found",
       install: "Installing kubectl: {hint}",
-      pathHint: "Or specify the kubectl path in settings (engines.kubectl) — the \"Engines & tools\" widget.",
+      pathHint: "Or specify the kubectl path in Settings → Tools.",
       recheck: "Check again",
     },
     context: {
@@ -186,7 +186,7 @@ export default {
       title: "Apply manifest",
       pathPlaceholder: "path inside the workspace, e.g. configs/deploy.yaml",
       pathLabel: "File path (relative to the workspace)",
-      pathHint: "Files are stored in ~/.megatool/configs — create them in the \"Configurations\" section",
+      pathHint: "Files are stored in ~/.megatool/configs — create them in Files & configs",
       dryRun: "Dry run (--dry-run=client)",
       deleteFile: "Delete from file",
       clearButton: "Clear output",

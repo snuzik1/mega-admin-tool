@@ -19,7 +19,7 @@ import shutil
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 try:
     import yaml  # type: ignore
@@ -28,7 +28,7 @@ except ImportError:  # pragma: no cover
 
 from .config import APPS_DIR, CONFIGS_DIR, HOME_DIR, Config
 from .i18n import t
-from .util import IS_WINDOWS, human_bytes, iso
+from .util import IS_WINDOWS, human_bytes, is_within, iso, write_text
 
 TEXT_EXTENSIONS = {
     ".yml", ".yaml", ".json", ".ini", ".cfg", ".conf", ".env", ".txt", ".md", ".log",
@@ -45,9 +45,9 @@ class FileNode:
     type: str                     # file | dir
     size: int = 0
     mtime: float = 0.0
-    children: list["FileNode"] = field(default_factory=list)
+    children: List['FileNode'] = field(default_factory=list)
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> Dict[str, Any]:
         return {
             "name": self.name,
             "path": self.path,
@@ -65,7 +65,7 @@ class Workspace:
         self.cfg = cfg
 
     # ------------------------------------------------------------------ #
-    def roots(self) -> list[dict[str, Any]]:
+    def roots(self) -> List[Dict[str, Any]]:
         items = [
             {"id": "home", "label": t("appfiles.rootHome"), "path": str(HOME_DIR), "kind": "home"},
             {"id": "apps", "label": t("appfiles.rootApps"), "path": str(APPS_DIR), "kind": "apps"},
@@ -79,7 +79,7 @@ class Workspace:
                               "path": str(path), "kind": "extra"})
         return items
 
-    def _allowed_roots(self) -> list[Path]:
+    def _allowed_roots(self) -> List[Path]:
         roots = [HOME_DIR.resolve()]
         for extra in self.cfg.get("monitor.extra_roots", []) or []:
             path = Path(str(extra)).expanduser()
@@ -87,14 +87,14 @@ class Workspace:
                 roots.append(path.resolve())
         return roots
 
-    def resolve(self, path: str | Path, must_exist: bool = False) -> Path:
+    def resolve(self, path: Union[str, Path], must_exist: bool = False) -> Path:
         """Приводит путь к абсолютному и проверяет, что он внутри разрешённых корней."""
         raw = Path(str(path)).expanduser()
         if not raw.is_absolute():
             raw = HOME_DIR / raw
         resolved = raw.resolve()
         allowed = self._allowed_roots()
-        if not any(resolved == root or resolved.is_relative_to(root) for root in allowed):
+        if not any(resolved == root or is_within(resolved, root) for root in allowed):
             raise PermissionError(t("appfiles.outsideRoots", path=resolved))
         if must_exist and not resolved.exists():
             raise FileNotFoundError(t("appfiles.notFound", path=resolved))
@@ -107,16 +107,16 @@ class Workspace:
             return str(path)
 
     # ------------------------------------------------------------------ #
-    def tree(self, root: str = "", depth: int = 3, limit: int = 2000) -> dict[str, Any]:
+    def tree(self, root: str = "", depth: int = 3, limit: int = 2000) -> Dict[str, Any]:
         base = self.resolve(root) if root else HOME_DIR
         if not base.is_dir():
             return {"ok": False, "error": t("appfiles.notDirectory", path=base), "nodes": []}
         count = 0
         skipped = 0
 
-        def walk(directory: Path, level: int) -> list[FileNode]:
+        def walk(directory: Path, level: int) -> List[FileNode]:
             nonlocal count, skipped
-            nodes: list[FileNode] = []
+            nodes: List[FileNode] = []
             try:
                 entries = sorted(directory.iterdir(), key=lambda p: (p.is_file(), p.name.lower()))
             except OSError:
@@ -149,7 +149,7 @@ class Workspace:
         return {"ok": True, "root": self.relative(base), "nodes": [n.to_dict() for n in root_node.children],
                 "count": count, "truncated": skipped > 0, "limit": limit}
 
-    def read(self, path: str, max_bytes: int = MAX_READ) -> dict[str, Any]:
+    def read(self, path: str, max_bytes: int = MAX_READ) -> Dict[str, Any]:
         target = self.resolve(path, must_exist=True)
         if target.is_dir():
             return {"ok": False, "error": t("appfiles.isDirectory")}
@@ -173,7 +173,7 @@ class Workspace:
             "kind": self.detect_kind(target.name),
         }
 
-    def write(self, path: str, content: str, backup: bool = True) -> dict[str, Any]:
+    def write(self, path: str, content: str, backup: bool = True) -> Dict[str, Any]:
         target = self.resolve(path)
         if target.exists() and target.is_dir():
             return {"ok": False, "error": t("appfiles.isDirectory")}
@@ -189,7 +189,7 @@ class Workspace:
             except OSError:
                 backup_path = ""
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(content, encoding="utf-8", newline="")
+        write_text(target, content)
         stat = target.stat()
         return {
             "ok": True, "path": self.relative(target), "created": created,
@@ -197,12 +197,12 @@ class Workspace:
             "validation": validate(target.name, content),
         }
 
-    def mkdir(self, path: str) -> dict[str, Any]:
+    def mkdir(self, path: str) -> Dict[str, Any]:
         target = self.resolve(path)
         target.mkdir(parents=True, exist_ok=True)
         return {"ok": True, "path": self.relative(target)}
 
-    def rename(self, old: str, new: str) -> dict[str, Any]:
+    def rename(self, old: str, new: str) -> Dict[str, Any]:
         source = self.resolve(old, must_exist=True)
         destination = self.resolve(new)
         if destination.exists():
@@ -210,7 +210,7 @@ class Workspace:
         source.rename(destination)
         return {"ok": True, "path": self.relative(destination)}
 
-    def delete(self, path: str, recursive: bool = False) -> dict[str, Any]:
+    def delete(self, path: str, recursive: bool = False) -> Dict[str, Any]:
         target = self.resolve(path, must_exist=True)
         if target == HOME_DIR:
             return {"ok": False, "error": t("appfiles.cannotDeleteRoot")}
@@ -228,7 +228,7 @@ class Workspace:
             target.unlink()
         return {"ok": True, "path": self.relative(target)}
 
-    def upload(self, path: str, filename: str, data: bytes) -> dict[str, Any]:
+    def upload(self, path: str, filename: str, data: bytes) -> Dict[str, Any]:
         directory = self.resolve(path)
         directory.mkdir(parents=True, exist_ok=True)
         safe_name = re.sub(r"[^\w.\-]+", "_", filename)[:120] or t("appfiles.uploadFallbackName")
@@ -241,12 +241,12 @@ class Workspace:
         return {"ok": True, "path": self.relative(target), "size": len(data)}
 
     # ------------------------------------------------------------------ #
-    def search(self, query: str, root: str = "", limit: int = 80) -> dict[str, Any]:
+    def search(self, query: str, root: str = "", limit: int = 80) -> Dict[str, Any]:
         query = (query or "").strip()
         if len(query) < 2:
             return {"ok": False, "error": t("appfiles.queryTooShort"), "matches": []}
         base = self.resolve(root) if root else HOME_DIR
-        matches: list[dict[str, Any]] = []
+        matches: List[Dict[str, Any]] = []
         scanned = 0
         for dirpath, dirnames, filenames in os.walk(base):
             dirnames[:] = [d for d in dirnames
@@ -301,7 +301,7 @@ class Workspace:
             return "sql"
         return "text"
 
-    def usage(self) -> dict[str, Any]:
+    def usage(self) -> Dict[str, Any]:
         used = 0
         files = 0
         for dirpath, _dirnames, filenames in os.walk(HOME_DIR):
@@ -318,12 +318,12 @@ class Workspace:
 #  Проверка синтаксиса
 # --------------------------------------------------------------------------- #
 
-def validate(filename: str, content: str) -> dict[str, Any]:
+def validate(filename: str, content: str) -> Dict[str, Any]:
     """Проверяет содержимое по типу файла. Возвращает {ok, errors, warnings, kind}."""
     kind = Workspace.detect_kind(filename)
-    errors: list[str] = []
-    warnings: list[str] = []
-    info: dict[str, Any] = {}
+    errors: List[str] = []
+    warnings: List[str] = []
+    info: Dict[str, Any] = {}
 
     try:
         if kind in ("yaml", "compose"):
@@ -413,12 +413,12 @@ def validate(filename: str, content: str) -> dict[str, Any]:
 #  Галерея шаблонов для редактора
 # --------------------------------------------------------------------------- #
 
-def _t(tid: str, name: str, filename: str, description: str, content: str, category: str = "configs") -> dict[str, Any]:
+def _t(tid: str, name: str, filename: str, description: str, content: str, category: str = "configs") -> Dict[str, Any]:
     return {"id": tid, "name": name, "filename": filename, "description": description,
             "content": content, "category": category}
 
 
-TEMPLATES: list[dict[str, Any]] = [
+TEMPLATES: List[Dict[str, Any]] = [
     _t("nginx-site", "Nginx: сайт", "site.conf",
        "Виртуальный хост с проксированием и кэшем статики",
        """server {
@@ -759,7 +759,7 @@ data:
 
 
 #: Ключи переводов названий и описаний шаблонов (содержимое файлов не переводится).
-_TEMPLATE_KEYS: dict[str, tuple[str, str]] = {
+_TEMPLATE_KEYS: Dict[str, Tuple[str, str]] = {
     "nginx-site": ("appfiles.tplNginxSiteName", "appfiles.tplNginxSiteDescription"),
     "compose-basic": ("appfiles.tplComposeBasicName", "appfiles.tplComposeBasicDescription"),
     "systemd-unit": ("appfiles.tplSystemdUnitName", "appfiles.tplSystemdUnitDescription"),
@@ -779,7 +779,7 @@ _TEMPLATE_KEYS: dict[str, tuple[str, str]] = {
 }
 
 
-def _localized_template(item: dict[str, Any]) -> dict[str, Any]:
+def _localized_template(item: Dict[str, Any]) -> Dict[str, Any]:
     """Копия шаблона с названием и описанием на языке интерфейса."""
     keys = _TEMPLATE_KEYS.get(str(item.get("id", "")))
     if not keys:
@@ -787,20 +787,20 @@ def _localized_template(item: dict[str, Any]) -> dict[str, Any]:
     return {**item, "name": t(keys[0]), "description": t(keys[1])}
 
 
-def list_templates() -> list[dict[str, Any]]:
+def list_templates() -> List[Dict[str, Any]]:
     return [{"id": item["id"], "name": item["name"], "filename": item["filename"],
              "description": item["description"], "category": item["category"],
              "size": len(item["content"])} for item in map(_localized_template, TEMPLATES)]
 
 
-def get_template(template_id: str) -> dict[str, Any] | None:
+def get_template(template_id: str) -> Optional[Dict[str, Any]]:
     for item in TEMPLATES:
         if item["id"] == template_id:
             return _localized_template(item)
     return None
 
 
-def nginx_test(binary: str, path: Path) -> dict[str, Any]:
+def nginx_test(binary: str, path: Path) -> Dict[str, Any]:
     """Проверка конфига nginx реальным бинарником (если он доступен)."""
     from .util import run
 

@@ -17,7 +17,7 @@ import re
 import threading
 import time
 import uuid
-from typing import Any, Iterable
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from .config import Config
 from .i18n import t
@@ -55,19 +55,19 @@ REPORT_MARKER = "MEGATOOL_REPORT=1"
 #  SSH
 # --------------------------------------------------------------------------- #
 
-def ssh_available(cfg: Config) -> str | None:
+def ssh_available(cfg: Config) -> Optional[str]:
     """Путь к клиенту ssh: настройка engines.ssh или поиск в PATH."""
     override = str(cfg.get("engines.ssh", "") or "")
     return which("ssh", override or None)
 
 
-def scp_available(cfg: Config) -> str | None:
+def scp_available(cfg: Config) -> Optional[str]:
     """Путь к клиенту scp (используется для копирования файлов)."""
     override = str(cfg.get("engines.scp", "") or "")
     return which("scp", override or None)
 
 
-def build_ssh_args(cfg: Config, server: dict[str, Any], extra: Iterable[str] | None = None) -> list[str]:
+def build_ssh_args(cfg: Config, server: Dict[str, Any], extra: Optional[Iterable[str]] = None) -> List[str]:
     """Собирает argv ssh: неинтерактивно, без пароля, с ключом при наличии."""
     binary = ssh_available(cfg) or "ssh"
     port = int(server.get("port") or 22)
@@ -89,7 +89,7 @@ def build_ssh_args(cfg: Config, server: dict[str, Any], extra: Iterable[str] | N
     return args
 
 
-def run_remote(cfg: Config, server: dict[str, Any], script: str, timeout: float = 60) -> CmdResult:
+def run_remote(cfg: Config, server: Dict[str, Any], script: str, timeout: float = 60) -> CmdResult:
     """Выполняет sh-скрипт на сервере, передавая его на stdin (sh -s)."""
     binary = ssh_available(cfg)
     if not binary:
@@ -162,7 +162,7 @@ printf 'MEM_MB=%s\n' "$mt_mem"
 """
 
 #: Семейства дистрибутивов: id → семейство.
-_FAMILIES: dict[str, tuple[str, ...]] = {
+_FAMILIES: Dict[str, Tuple[str, ...]] = {
     "debian": ("debian", "ubuntu", "raspbian", "linuxmint", "pop", "devuan",
                "kali", "neon", "elementary", "zorin", "mx", "deepin"),
     "redhat": ("rhel", "centos", "fedora", "rocky", "almalinux", "ol", "oracle",
@@ -185,16 +185,16 @@ def _family(os_id: str, os_like: str = "") -> str:
     return "unknown"
 
 
-def _as_int(value: Any) -> int | None:
+def _as_int(value: Any) -> Optional[int]:
     try:
         return int(str(value).strip())
     except (TypeError, ValueError):
         return None
 
 
-def parse_report(text: str) -> dict[str, Any]:
+def parse_report(text: str) -> Dict[str, Any]:
     """Разбирает вывод CHECK_SCRIPT (строки KEY=VALUE) в структуру отчёта."""
-    data: dict[str, str] = {}
+    data: Dict[str, str] = {}
     for line in (text or "").splitlines():
         line = line.strip()
         if not line or "=" not in line:
@@ -234,10 +234,10 @@ def parse_report(text: str) -> dict[str, Any]:
     }
 
 
-def installed_tasks(report: dict[str, Any] | None) -> dict[str, bool]:
+def installed_tasks(report: Optional[Dict[str, Any]]) -> Dict[str, bool]:
     """Помечает задачи, чьё ПО уже есть на сервере (по отчёту проверки)."""
     tools = (report or {}).get("tools") or {}
-    result: dict[str, bool] = {}
+    result: Dict[str, bool] = {}
     if "curl" in tools:
         result["base-tools"] = bool(tools.get("curl") and tools.get("git"))
     if "docker" in tools:
@@ -251,7 +251,7 @@ def installed_tasks(report: dict[str, Any] | None) -> dict[str, bool]:
     return result
 
 
-def check_server(cfg: Config, server: dict[str, Any], timeout: float = 30) -> dict[str, Any]:
+def check_server(cfg: Config, server: Dict[str, Any], timeout: float = 30) -> Dict[str, Any]:
     """Синхронная проверка сервера: доступность и инвентарь."""
     result = run_remote(cfg, server, CHECK_SCRIPT, timeout=timeout)
     if result.missing:
@@ -282,16 +282,16 @@ def check_server(cfg: Config, server: dict[str, Any], timeout: float = 30) -> di
 #  Параметры задач
 # --------------------------------------------------------------------------- #
 
-def _param_label(task: dict[str, Any], spec: dict[str, Any]) -> str:
+def _param_label(task: Dict[str, Any], spec: Dict[str, Any]) -> str:
     label = t(f"tasks.{task['id']}.params.{spec['name']}.label")
     return label if label != f"tasks.{task['id']}.params.{spec['name']}.label" else spec["name"]
 
 
-def _bad_param(task: dict[str, Any], spec: dict[str, Any]) -> ValueError:
+def _bad_param(task: Dict[str, Any], spec: Dict[str, Any]) -> ValueError:
     return ValueError(t("servers.badParam", param=_param_label(task, spec), task=task["id"]))
 
 
-def _check_param(task: dict[str, Any], spec: dict[str, Any], raw: Any) -> str:
+def _check_param(task: Dict[str, Any], spec: Dict[str, Any], raw: Any) -> str:
     """Проверяет одно значение параметра, возвращает строку для скрипта."""
     kind = spec.get("kind", "text")
     value = "" if raw is None else str(raw).strip()
@@ -351,7 +351,7 @@ def raw_str(value: Any) -> str:
     return "" if value is None else str(value)
 
 
-def validate_params(task_ids: Iterable[str], params: dict[str, Any] | None = None) -> dict[str, Any]:
+def validate_params(task_ids: Iterable[str], params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Проверяет параметры выбранных задач.
 
     Возвращает {"ok": True, "values": {...}} либо {"ok": False, "error": "..."}.
@@ -365,7 +365,7 @@ def validate_params(task_ids: Iterable[str], params: dict[str, Any] | None = Non
         if task_id not in known:
             return {"ok": False, "error": t("servers.unknownTask", task=task_id)}
 
-    values: dict[str, str] = {}
+    values: Dict[str, str] = {}
     source = params if isinstance(params, dict) else {}
     for task in select_tasks(ids):
         for spec in task["params"]:
@@ -377,7 +377,7 @@ def validate_params(task_ids: Iterable[str], params: dict[str, Any] | None = Non
     return {"ok": True, "values": values}
 
 
-def _render(text: str, values: dict[str, str]) -> str:
+def _render(text: str, values: Dict[str, str]) -> str:
     """Подставляет значения параметров, не трогая shell-переменные вида ${HOME}."""
     for key, value in values.items():
         text = text.replace("{" + key + "}", value)
@@ -414,7 +414,7 @@ _INSTALL_HELPER = r"""mt_install() {
 }
 """
 
-TASKS: list[dict[str, Any]] = [
+TASKS: List[Dict[str, Any]] = [
     {
         "id": "base-update",
         "group": "base",
@@ -721,16 +721,16 @@ echo 'MegaTool: fail2ban включён'""",
 _TASKS_BY_ID = {task["id"]: task for task in TASKS}
 
 
-def select_tasks(task_ids: Iterable[str]) -> list[dict[str, Any]]:
+def select_tasks(task_ids: Iterable[str]) -> List[Dict[str, Any]]:
     """Выбирает существующие задачи в каноническом порядке каталога."""
     wanted = {str(item).strip() for item in (task_ids or []) if str(item).strip()}
     return [task for task in TASKS if task["id"] in wanted]
 
 
-def task_catalog(report: dict[str, Any] | None = None) -> dict[str, Any]:
+def task_catalog(report: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Локализованный каталог задач (без текста скриптов)."""
     installed = installed_tasks(report) if report else {}
-    items: list[dict[str, Any]] = []
+    items: List[Dict[str, Any]] = []
     for task in TASKS:
         params = []
         for spec in task["params"]:
@@ -778,7 +778,7 @@ def task_catalog(report: dict[str, Any] | None = None) -> dict[str, Any]:
 #  Генерация скриптов
 # --------------------------------------------------------------------------- #
 
-def _sudo_state(server: dict[str, Any], report: dict[str, Any] | None) -> bool | None:
+def _sudo_state(server: Dict[str, Any], report: Optional[Dict[str, Any]]) -> Optional[bool]:
     """Доступен ли sudo без пароля: True/False/None (неизвестно)."""
     if report is not None and "sudo_nopass" in report:
         return bool(report["sudo_nopass"])
@@ -788,7 +788,7 @@ def _sudo_state(server: dict[str, Any], report: dict[str, Any] | None) -> bool |
     return None
 
 
-def _sudo_block(task: dict[str, Any], fragment: str, state: bool | None) -> str:
+def _sudo_block(task: Dict[str, Any], fragment: str, state: Optional[bool]) -> str:
     """Оборачивает фрагмент в sudo с внятным сообщением при неудаче."""
     task_id = task["id"]
     if state is False:
@@ -818,7 +818,7 @@ def _sudo_block(task: dict[str, Any], fragment: str, state: bool | None) -> str:
     )
 
 
-def _header_comment(server: dict[str, Any], tasks: list[dict[str, Any]]) -> list[str]:
+def _header_comment(server: Dict[str, Any], tasks: List[Dict[str, Any]]) -> List[str]:
     name = str(server.get("name") or server.get("host") or "")
     user = str(server.get("user") or "root")
     host = str(server.get("host") or "")
@@ -833,11 +833,11 @@ def _header_comment(server: dict[str, Any], tasks: list[dict[str, Any]]) -> list
 
 
 def build_script(
-    server: dict[str, Any],
+    server: Dict[str, Any],
     task_ids: Iterable[str],
-    params: dict[str, Any] | None,
+    params: Optional[Dict[str, Any]],
     cfg: Config,
-    report: dict[str, Any] | None = None,
+    report: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Собирает один sh-скрипт из выбранных задач.
 
@@ -887,11 +887,11 @@ def build_script(
 
 
 def build_playbook(
-    server: dict[str, Any],
+    server: Dict[str, Any],
     task_ids: Iterable[str],
-    params: dict[str, Any] | None,
+    params: Optional[Dict[str, Any]],
     cfg: Config,
-    report: dict[str, Any] | None = None,
+    report: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Собирает Ansible-плейбук (become: true) с теми же фрагментами задач."""
     del cfg
@@ -957,9 +957,9 @@ def _clean_text(value: Any, limit: int = 500) -> str:
     return "".join(ch for ch in text if ch == "\t" or ord(ch) >= 32).strip()[:limit]
 
 
-def _validate_server(data: dict[str, Any], partial: bool = False) -> tuple[dict[str, Any], str]:
+def _validate_server(data: Dict[str, Any], partial: bool = False) -> Tuple[Dict[str, Any], str]:
     """Проверяет поля сервера. Возвращает (очищенные поля, текст ошибки)."""
-    clean: dict[str, Any] = {}
+    clean: Dict[str, Any] = {}
 
     if not partial or "name" in data:
         clean["name"] = _clean_text(data.get("name"), 64)
@@ -1001,20 +1001,20 @@ class ServersManager:
         self.cfg = cfg
         self._lock = threading.RLock()
         #: Последние отчёты проверки — только в памяти (не секреты, но и не модель).
-        self.reports: dict[str, dict[str, Any]] = {}
+        self.reports: Dict[str, Dict[str, Any]] = {}
 
     # ------------------------------------------------------------------ #
-    def _items(self) -> list[dict[str, Any]]:
+    def _items(self) -> List[Dict[str, Any]]:
         raw = self.cfg.get("servers", []) or []
         return [dict(item) for item in raw if isinstance(item, dict) and item.get("id")]
 
-    def list(self) -> list[dict[str, Any]]:
+    def list(self) -> List[Dict[str, Any]]:
         with self._lock:
             items = self._items()
         return sorted(items, key=lambda item: (str(item.get("name", "")).lower(),
                                                str(item.get("id", ""))))
 
-    def get(self, server_id: str) -> dict[str, Any] | None:
+    def get(self, server_id: str) -> Optional[Dict[str, Any]]:
         with self._lock:
             for item in self._items():
                 if item.get("id") == server_id:
@@ -1022,7 +1022,7 @@ class ServersManager:
         return None
 
     # ------------------------------------------------------------------ #
-    def add(self, data: Any) -> dict[str, Any]:
+    def add(self, data: Any) -> Dict[str, Any]:
         payload = data if isinstance(data, dict) else {}
         clean, error = _validate_server(payload, partial=False)
         if error:
@@ -1044,7 +1044,7 @@ class ServersManager:
             self.cfg.save()
         return {"ok": True, "server": dict(server)}
 
-    def update(self, server_id: str, data: Any) -> dict[str, Any]:
+    def update(self, server_id: str, data: Any) -> Dict[str, Any]:
         payload = data if isinstance(data, dict) else {}
         with self._lock:
             items = self._items()
@@ -1062,7 +1062,7 @@ class ServersManager:
             self.cfg.save()
         return {"ok": True, "server": dict(server)}
 
-    def delete(self, server_id: str) -> dict[str, Any]:
+    def delete(self, server_id: str) -> Dict[str, Any]:
         with self._lock:
             items = self._items()
             remaining = [item for item in items if item.get("id") != server_id]
@@ -1074,12 +1074,12 @@ class ServersManager:
         return {"ok": True, "deleted": server_id}
 
     # ------------------------------------------------------------------ #
-    def remember_report(self, server_id: str, report: dict[str, Any]) -> None:
+    def remember_report(self, server_id: str, report: Dict[str, Any]) -> None:
         """Запоминает результат проверки для подсказок «уже установлено»."""
         with self._lock:
             self.reports[server_id] = dict(report)
 
-    def last_report(self, server_id: str) -> dict[str, Any] | None:
+    def last_report(self, server_id: str) -> Optional[Dict[str, Any]]:
         with self._lock:
             report = self.reports.get(server_id)
             return dict(report) if report else None
@@ -1092,11 +1092,11 @@ class ServersManager:
 def submit_script_job(
     cfg: Config,
     jobs: JobManager,
-    server: dict[str, Any],
+    server: Dict[str, Any],
     script: str,
     title: str,
-    meta: dict[str, Any] | None = None,
-) -> dict[str, Any]:
+    meta: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
     """Запускает сгенерированный скрипт как фоновую задачу (kind=ssh)."""
     if not ssh_available(cfg):
         return {"ok": False, "error": t("servers.noSsh")}
@@ -1113,11 +1113,11 @@ def submit_script_job(
 def submit_command_job(
     cfg: Config,
     jobs: JobManager,
-    server: dict[str, Any],
+    server: Dict[str, Any],
     command: str,
     title: str,
-    meta: dict[str, Any] | None = None,
-) -> dict[str, Any]:
+    meta: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
     """Запускает свободную команду на сервере как фоновую задачу (kind=ssh)."""
     if not ssh_available(cfg):
         return {"ok": False, "error": t("servers.noSsh")}

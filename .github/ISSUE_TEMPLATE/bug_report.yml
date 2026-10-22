@@ -6,8 +6,8 @@ body:
   - type: markdown
     attributes:
       value: |
-        Спасибо за отчёт. Не прикладывайте токены, пароли, SSH-ключи и
-        содержимое `access.json`/`config.json`. Уязвимости отправляйте приватно
+        Спасибо за отчёт. Не прикладывайте токены агентов, SSH-ключи и
+        содержимое `config.json`. Уязвимости отправляйте приватно
         по инструкции в [SECURITY.md](../../SECURITY.md), а не в публичный Issue.
 
   - type: input
@@ -15,7 +15,7 @@ body:
     attributes:
       label: Версия MegaTool
       description: Вывод `python -m megatool --version` или версия из README/интерфейса.
-      placeholder: "0.6.0"
+      placeholder: "0.7.0"
     validations:
       required: true
 
@@ -73,7 +73,7 @@ body:
       description: |
         При необходимости приложите очищенные логи, `python --version`,
         `docker version`, `kubectl version` и другие relevant сведения.
-        Удалите токены, пароли и персональные данные.
+        Удалите токены и персональные данные.
       render: shell
     validations:
       required: false
@@ -83,7 +83,7 @@ body:
     attributes:
       label: Перед отправкой
       options:
-        - label: Я удалил(а) токены, пароли, приватные ключи и другие секреты.
+        - label: Я удалил(а) токены, приватные ключи и другие секреты.
           required: true
         - label: Я проверил(а), что это не приватный отчёт об уязвимости.
           required: true

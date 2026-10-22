@@ -1,8 +1,8 @@
-/* Apps section strings (English). */
+/* App catalog section strings (English). */
 
 export default {
   catalog: {
-    title: "Apps",
+    title: "App catalog",
     subtitle: "Ready recipes: Postgres, Redis, Nginx, monitoring, k8s manifests and more",
     search: "search by name, description, tags…",
     emptyText: "empty",

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Dict
 
 from fastapi import APIRouter, Body, Request
 
@@ -12,7 +12,7 @@ from .i18n import t
 router = APIRouter(prefix="/api")
 
 
-def _ok(data: Any = None, **extra: Any) -> dict[str, Any]:
+def _ok(data: Any = None, **extra: Any) -> Dict[str, Any]:
     payload = {"ok": True}
     if data is not None:
         payload["data"] = data
@@ -20,20 +20,20 @@ def _ok(data: Any = None, **extra: Any) -> dict[str, Any]:
     return payload
 
 
-def _fail(message: str, **extra: Any) -> dict[str, Any]:
+def _fail(message: str, **extra: Any) -> Dict[str, Any]:
     payload = {"ok": False, "error": message}
     payload.update(extra)
     return payload
 
 
 @router.get("/agents")
-def agents_list(request: Request, force: bool = False) -> dict[str, Any]:
+def agents_list(request: Request, force: bool = False) -> Dict[str, Any]:
     runtime = request.app.state.rt
     return _ok(collect(runtime.cfg, force=force))
 
 
 @router.post("/agents/test")
-def agents_test(request: Request, body: dict[str, Any] = Body(default={})) -> dict[str, Any]:
+def agents_test(request: Request, body: Dict[str, Any] = Body(default={})) -> Dict[str, Any]:
     """Проверяет агента по адресу или по id сохранённого (тогда берём его токен)."""
     runtime = request.app.state.rt
     agent_id = str(body.get("id") or "").strip()

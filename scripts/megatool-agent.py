@@ -14,6 +14,7 @@ psutil используются его данные для температур�
 """
 
 from __future__ import annotations
+from typing import Dict, List, Optional, Tuple
 
 import argparse
 import ctypes
@@ -40,7 +41,7 @@ DISK_PATH = "/" if os.name != "nt" else "C:\\"
 TOKEN = ""
 
 _LOCK = threading.Lock()
-_CACHE: dict[str, object] = {"ts": 0.0, "data": None}
+_CACHE: Dict[str, object] = {"ts": 0.0, "data": None}
 
 IS_WINDOWS = os.name == "nt"
 IS_LINUX = sys.platform.startswith("linux")
@@ -52,11 +53,11 @@ IS_LINUX = sys.platform.startswith("linux")
 
 class _CpuSampler:
     def __init__(self) -> None:
-        self._prev: tuple[int, int] | None = None
+        self._prev: Optional[Tuple[int, int]] = None
         self._init = threading.Lock()
         self._prime()
 
-    def _read(self) -> tuple[int, int] | None:
+    def _read(self) -> Optional[Tuple[int, int]]:
         """Возвращает (всего тиков, простой) или None, если ОС не поддерживается."""
         if IS_LINUX:
             try:
@@ -116,8 +117,8 @@ CPU = _CpuSampler()
 #  Память, диск, uptime, сеть
 # --------------------------------------------------------------------------- #
 
-def _linux_meminfo() -> dict[str, int]:
-    values: dict[str, int] = {}
+def _linux_meminfo() -> Dict[str, int]:
+    values: Dict[str, int] = {}
     try:
         with open("/proc/meminfo", "r", encoding="ascii") as fh:
             for line in fh:
@@ -134,7 +135,7 @@ def _linux_meminfo() -> dict[str, int]:
     return values
 
 
-def _windows_memory() -> tuple[int, int, int, int]:
+def _windows_memory() -> Tuple[int, int, int, int]:
     """total, available, swap_total, swap_available (в байтах)."""
     class MEMORYSTATUSEX(ctypes.Structure):
         _fields_ = [
@@ -183,7 +184,7 @@ def _uptime() -> float:
     return 0.0
 
 
-def _net_totals() -> tuple[int | None, int | None]:
+def _net_totals() -> Tuple[Optional[int], Optional[int]]:
     if IS_LINUX:
         rx = tx = 0
         try:
@@ -208,7 +209,7 @@ def _net_totals() -> tuple[int | None, int | None]:
     return None, None
 
 
-def _temperature() -> float | None:
+def _temperature() -> Optional[float]:
     if psutil is None:
         return None
     try:
@@ -219,7 +220,7 @@ def _temperature() -> float | None:
     return round(max(values), 1) if values else None
 
 
-def collect_metrics() -> dict[str, object]:
+def collect_metrics() -> Dict[str, object]:
     """Собирает показатели машины. Результат кэшируется на секунду."""
     now = time.time()
     with _LOCK:
@@ -269,7 +270,7 @@ def collect_metrics() -> dict[str, object]:
 
     net_rx, net_tx = _net_totals()
 
-    data: dict[str, object] = {
+    data: Dict[str, object] = {
         "ok": True,
         "service": "megatool-agent",
         "agent_version": AGENT_VERSION,
@@ -314,7 +315,7 @@ class AgentHandler(BaseHTTPRequestHandler):
         if args and str(args[0]).startswith(("GET", "HEAD")):
             sys.stderr.write("[agent] %s %s\n" % (self.address_string(), fmt % args))
 
-    def _send(self, status: int, payload: dict[str, object]) -> None:
+    def _send(self, status: int, payload: Dict[str, object]) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -362,7 +363,7 @@ class AgentHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: Optional[List[str]] = None) -> int:
     global TOKEN, DISK_PATH
     parser = argparse.ArgumentParser(description="MegaTool Agent: лёгкий экспортёр метрик")
     parser.add_argument("--host", default="127.0.0.1", help="адрес прослушивания (по умолчанию 127.0.0.1)")

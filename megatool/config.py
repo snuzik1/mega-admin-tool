@@ -13,10 +13,11 @@
 from __future__ import annotations
 
 import copy
+import functools
 import os
 import threading
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, List, Tuple, Union
 
 from .util import ensure_dir, read_json, write_json
 
@@ -68,20 +69,13 @@ UI_THEMES = ("light", "sepia", "slate", "dark", "contrast", "auto")
 UI_DENSITIES = ("normal", "compact")
 UI_LANGUAGES = ("ru", "en")
 
-DEFAULT_CONFIG: dict[str, Any] = {
+DEFAULT_CONFIG: Dict[str, Any] = {
     "version": 1,
     "server": {
         "host": "127.0.0.1",
         "port": 8787,
         "open_browser": True,
         "allowed_hosts": [],     # доп. имена Host для обратного прокси (по умолчанию только loopback)
-    },
-    "auth": {
-        "enabled": False,
-        "token": "",
-        # После первого локального администратора новые пользователи обязаны
-        # соответствовать локальной учётной записи с правами root/administrator.
-        "local_only": False,
     },
     "audit": {
         "max_mb": 5,             # порог ротации журнала действий
@@ -135,7 +129,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
 }
 
 
-def default_watch_paths() -> list[str]:
+def default_watch_paths() -> List[str]:
     """Каталоги, которые имеет смысл отслеживать на изменения (по умолчанию)."""
     if os.name == "nt":
         windir = os.environ.get("SystemRoot", r"C:\Windows")
@@ -156,19 +150,22 @@ class Config:
     cfg.set("server.port", 9000)
     """
 
-    def __init__(self, path: Path | str = CONFIG_PATH) -> None:
+    def __init__(self, path: Union[Path, str] = CONFIG_PATH) -> None:
         self.path = Path(path)
         self._lock = threading.RLock()
-        self._data: dict[str, Any] = copy.deepcopy(DEFAULT_CONFIG)
+        self._data: Dict[str, Any] = copy.deepcopy(DEFAULT_CONFIG)
         self.load()
 
     # ------------------------------------------------------------------ #
-    def load(self) -> dict[str, Any]:
+    def load(self) -> Dict[str, Any]:
         with self._lock:
             stored = read_json(self.path, default=None)
             data = copy.deepcopy(DEFAULT_CONFIG)
             if isinstance(stored, dict):
                 data = _deep_merge(data, stored)
+            # Старые версии хранили настройки встроенной авторизации: удаляем
+            # секцию при загрузке, чтобы она не возвращалась в файл и в API.
+            data.pop("auth", None)
             self._data = data
             self._ensure_dirs()
             if not self.path.is_file():
@@ -182,7 +179,7 @@ class Config:
             write_json(self.path, self._data, mode=0o600)
 
     @property
-    def data(self) -> dict[str, Any]:
+    def data(self) -> Dict[str, Any]:
         with self._lock:
             return self._data
 
@@ -200,7 +197,7 @@ class Config:
     def get(self, dotted: str, default: Any = None) -> Any:
         with self._lock:
             node: Any = self._data
-            for part in dotted.split("."):
+            for part in _path_parts(dotted):
                 if not isinstance(node, dict) or part not in node:
                     return default
                 node = node[part]
@@ -208,7 +205,7 @@ class Config:
 
     def set(self, dotted: str, value: Any) -> None:
         with self._lock:
-            parts = dotted.split(".")
+            parts = _path_parts(dotted)
             node = self._data
             for part in parts[:-1]:
                 nxt = node.get(part)
@@ -218,19 +215,21 @@ class Config:
                 node = nxt
             node[parts[-1]] = value
 
-    def update(self, patch: dict[str, Any], persist: bool = True) -> dict[str, Any]:
+    def update(self, patch: Dict[str, Any], persist: bool = True) -> Dict[str, Any]:
         """Глубоко сливает патч с настройками (используется API PATCH /settings)."""
         with self._lock:
-            self._data = _deep_merge(self._data, patch or {})
+            clean = dict(patch or {})
+            clean.pop("auth", None)
+            self._data = _deep_merge(self._data, clean)
             if persist:
                 self.save()
             return self._data
 
-    def export(self, redact_secrets: bool = True) -> dict[str, Any]:
+    def export(self, redact_secrets: bool = True) -> Dict[str, Any]:
         with self._lock:
             data = copy.deepcopy(self._data)
+        data.pop("auth", None)
         if redact_secrets:
-            data.setdefault("auth", {})["token"] = ""
             for agent in data.get("agents", []) or []:
                 if not isinstance(agent, dict):
                     continue
@@ -241,7 +240,13 @@ class Config:
         return data
 
 
-def _deep_merge(base: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
+@functools.lru_cache(maxsize=256)
+def _path_parts(dotted: str) -> Tuple[str, ...]:
+    """Кэширует разбор точечных путей: горячий путь чтения настроек."""
+    return tuple(str(dotted).split("."))
+
+
+def _deep_merge(base: Dict[str, Any], patch: Dict[str, Any]) -> Dict[str, Any]:
     out = dict(base)
     for key, value in (patch or {}).items():
         if isinstance(value, dict) and isinstance(out.get(key), dict):

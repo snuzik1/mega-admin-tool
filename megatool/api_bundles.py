@@ -9,7 +9,7 @@
 from __future__ import annotations
 
 import io
-from typing import Any
+from typing import Any, Dict
 
 from fastapi import APIRouter, Body, Request
 from fastapi.responses import StreamingResponse
@@ -29,7 +29,7 @@ def _store(request: Request) -> BundleStore:
     return store
 
 
-def _as_dict(body: Any) -> dict[str, Any]:
+def _as_dict(body: Any) -> Dict[str, Any]:
     return body if isinstance(body, dict) else {}
 
 
@@ -38,35 +38,35 @@ def _as_dict(body: Any) -> dict[str, Any]:
 # --------------------------------------------------------------------------- #
 
 @router.get("/bundles")
-def bundles_list(request: Request) -> dict[str, Any]:
+def bundles_list(request: Request) -> Dict[str, Any]:
     items = _store(request).list()
     return {"ok": True, "items": items, "count": len(items)}
 
 
 @router.get("/bundles/presets")
-def bundles_presets(request: Request) -> dict[str, Any]:
+def bundles_presets(request: Request) -> Dict[str, Any]:
     items = _store(request).presets()
     return {"ok": True, "items": items, "count": len(items)}
 
 
 @router.post("/bundles")
-def bundles_create(request: Request, body: dict[str, Any] = Body(default={})) -> dict[str, Any]:
+def bundles_create(request: Request, body: Dict[str, Any] = Body(default={})) -> Dict[str, Any]:
     return _store(request).create(_as_dict(body))
 
 
 @router.get("/bundles/{bid}")
-def bundles_get(request: Request, bid: str) -> dict[str, Any]:
+def bundles_get(request: Request, bid: str) -> Dict[str, Any]:
     return _store(request).get(bid)
 
 
 @router.patch("/bundles/{bid}")
 def bundles_update(request: Request, bid: str,
-                   body: dict[str, Any] = Body(default={})) -> dict[str, Any]:
+                   body: Dict[str, Any] = Body(default={})) -> Dict[str, Any]:
     return _store(request).save_meta(bid, _as_dict(body))
 
 
 @router.delete("/bundles/{bid}")
-def bundles_delete(request: Request, bid: str) -> dict[str, Any]:
+def bundles_delete(request: Request, bid: str) -> Dict[str, Any]:
     return _store(request).delete(bid)
 
 
@@ -75,25 +75,25 @@ def bundles_delete(request: Request, bid: str) -> dict[str, Any]:
 # --------------------------------------------------------------------------- #
 
 @router.get("/bundles/{bid}/file")
-def bundle_file_read(request: Request, bid: str, path: str = "") -> dict[str, Any]:
+def bundle_file_read(request: Request, bid: str, path: str = "") -> Dict[str, Any]:
     return _store(request).read_file(bid, path)
 
 
 @router.post("/bundles/{bid}/file")
 def bundle_file_write(request: Request, bid: str,
-                      body: dict[str, Any] = Body(default={})) -> dict[str, Any]:
+                      body: Dict[str, Any] = Body(default={})) -> Dict[str, Any]:
     data = _as_dict(body)
     return _store(request).write_file(bid, data.get("path", ""), data.get("content", ""))
 
 
 @router.post("/bundles/{bid}/files")
 def bundle_file_add(request: Request, bid: str,
-                    body: dict[str, Any] = Body(default={})) -> dict[str, Any]:
+                    body: Dict[str, Any] = Body(default={})) -> Dict[str, Any]:
     return _store(request).add_file(bid, _as_dict(body).get("path", ""))
 
 
 @router.delete("/bundles/{bid}/file")
-def bundle_file_delete(request: Request, bid: str, path: str = "") -> dict[str, Any]:
+def bundle_file_delete(request: Request, bid: str, path: str = "") -> Dict[str, Any]:
     return _store(request).delete_file(bid, path)
 
 

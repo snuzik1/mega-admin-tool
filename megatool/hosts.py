@@ -17,7 +17,7 @@ import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 from .checks import _normalize_host, _normalize_url, _probe
 from .config import HOME_DIR
@@ -64,7 +64,7 @@ def _note(value: Any, limit: int = 300) -> str:
     return text[:limit]
 
 
-def _target(item: dict[str, Any]) -> str:
+def _target(item: Dict[str, Any]) -> str:
     if item.get("probe") == "http":
         return str(item.get("url") or "")
     host = str(item.get("host") or "")
@@ -73,21 +73,21 @@ def _target(item: dict[str, Any]) -> str:
     return f"{host}:{item.get('port')}"
 
 
-def _fingerprint(item: dict[str, Any]) -> str:
+def _fingerprint(item: Dict[str, Any]) -> str:
     if item.get("probe") == "http":
         return f"http|{item.get('url')}"
     return f"tcp|{item.get('host')}|{item.get('port')}"
 
 
-def clean_hosts(raw: Any) -> tuple[list[dict[str, Any]], str]:
+def clean_hosts(raw: Any) -> Tuple[List[Dict[str, Any]], str]:
     """Проверяет список серверов и возвращает (очищенный список, ошибка)."""
     if not isinstance(raw, list):
         return [], t("hosts.badList")
     if len(raw) > MAX_HOSTS:
         return [], t("hosts.tooMany", limit=MAX_HOSTS)
 
-    out: list[dict[str, Any]] = []
-    used: set[str] = set()
+    out: List[Dict[str, Any]] = []
+    used: Set[str] = set()
     for source in raw:
         if not isinstance(source, dict):
             return [], t("hosts.badList")
@@ -95,7 +95,7 @@ def clean_hosts(raw: Any) -> tuple[list[dict[str, Any]], str]:
         if probe not in PROBE_TYPES:
             return [], t("hosts.badProbe")
 
-        item: dict[str, Any] = {
+        item: Dict[str, Any] = {
             "probe": probe,
             "kind": _text(source.get("kind"), 40),
             "note": _note(source.get("note")),
@@ -133,7 +133,7 @@ def clean_hosts(raw: Any) -> tuple[list[dict[str, Any]], str]:
     return out, ""
 
 
-def _new_state(now: float, item: dict[str, Any]) -> dict[str, Any]:
+def _new_state(now: float, item: Dict[str, Any]) -> Dict[str, Any]:
     enabled = item.get("enabled", True)
     return {
         "state": "unknown" if enabled else "disabled",
@@ -152,7 +152,7 @@ def _new_state(now: float, item: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _close_period(state: dict[str, Any], now: float) -> None:
+def _close_period(state: Dict[str, Any], now: float) -> None:
     """Добавляет длительность текущего состояния в суммарный счётчик."""
     since = _float_value(state.get("since"), now, 0.0, now)
     elapsed = max(0.0, now - since)
@@ -165,7 +165,7 @@ def _close_period(state: dict[str, Any], now: float) -> None:
         state["total_disabled_sec"] = _float_value(state.get("total_disabled_sec"), 0.0, 0.0, 1e15) + elapsed
 
 
-def _set_state(state: dict[str, Any], new_state: str, now: float) -> bool:
+def _set_state(state: Dict[str, Any], new_state: str, now: float) -> bool:
     """Переключает состояние. Возвращает True, если состояние изменилось."""
     if new_state not in _STATES or state.get("state") == new_state:
         return False
@@ -179,16 +179,16 @@ def _set_state(state: dict[str, Any], new_state: str, now: float) -> bool:
 class HostsManager:
     """Хранит инвентарь серверов и историю их доступности."""
 
-    def __init__(self, cfg, state_path: Path | str | None = None) -> None:
+    def __init__(self, cfg, state_path: Optional[Union[Path, str]] = None) -> None:
         self.cfg = cfg
         self.state_path = Path(state_path) if state_path else STATE_PATH
         self._lock = threading.RLock()
-        self._items: list[dict[str, Any]] = []
-        self._states: dict[str, dict[str, Any]] = {}
-        self._last_started: dict[str, float] = {}
-        self._running: set[str] = set()
+        self._items: List[Dict[str, Any]] = []
+        self._states: Dict[str, Dict[str, Any]] = {}
+        self._last_started: Dict[str, float] = {}
+        self._running: Set[str] = set()
         self._stop = threading.Event()
-        self._thread: threading.Thread | None = None
+        self._thread: Optional[threading.Thread] = None
         self._pool = ThreadPoolExecutor(max_workers=6, thread_name_prefix="megatool-host")
         self._load_state()
         self.reload()
@@ -247,7 +247,7 @@ class HostsManager:
         changed = False
         with self._lock:
             ids = {item["id"] for item in items}
-            fresh: dict[str, dict[str, Any]] = {}
+            fresh: Dict[str, Dict[str, Any]] = {}
             for item in items:
                 state = self._states.get(item["id"]) or _new_state(now, item)
                 fingerprint = _fingerprint(item)
@@ -282,7 +282,7 @@ class HostsManager:
         if changed:
             self._save_state()
 
-    def save(self, raw: Any) -> tuple[list[dict[str, Any]], str]:
+    def save(self, raw: Any) -> Tuple[List[Dict[str, Any]], str]:
         items, error = clean_hosts(raw)
         if error:
             return [], error
@@ -308,13 +308,13 @@ class HostsManager:
         if self._thread:
             self._thread.join(timeout=2.0)
             self._thread = None
-        self._pool.shutdown(wait=False, cancel_futures=True)
+        self._pool.shutdown(wait=False)
         self._save_state()
 
     def _loop(self) -> None:
         while not self._stop.is_set():
             now = time.monotonic()
-            due: list[dict[str, Any]] = []
+            due: List[Dict[str, Any]] = []
             with self._lock:
                 for item in self._items:
                     if not item.get("enabled", True) or item["id"] in self._running:
@@ -329,13 +329,13 @@ class HostsManager:
                 self._pool.submit(self._run_one, item)
             self._stop.wait(1.0)
 
-    def _run_one(self, item: dict[str, Any]) -> None:
+    def _run_one(self, item: Dict[str, Any]) -> None:
         result = self._probe_safe(item)
         self._record(item, result)
         with self._lock:
             self._running.discard(item["id"])
 
-    def _probe_safe(self, item: dict[str, Any]) -> dict[str, Any]:
+    def _probe_safe(self, item: Dict[str, Any]) -> Dict[str, Any]:
         try:
             probe_item = dict(item)
             probe_item["type"] = item.get("probe", "tcp")
@@ -349,7 +349,7 @@ class HostsManager:
                 "params": {"error": str(exc)[:300]},
             }
 
-    def _record(self, item: dict[str, Any], result: dict[str, Any]) -> None:
+    def _record(self, item: Dict[str, Any], result: Dict[str, Any]) -> None:
         now = time.time()
         changed = False
         with self._lock:
@@ -384,7 +384,7 @@ class HostsManager:
     # ------------------------------------------------------------------ #
     #  Ручные проверки
     # ------------------------------------------------------------------ #
-    def run(self, host_id: str) -> dict[str, Any] | None:
+    def run(self, host_id: str) -> Optional[Dict[str, Any]]:
         with self._lock:
             item = next((dict(entry) for entry in self._items if entry["id"] == host_id), None)
         if not item:
@@ -393,7 +393,7 @@ class HostsManager:
             self._record(item, self._probe_safe(item))
         return self.snapshot()
 
-    def run_all(self) -> dict[str, Any]:
+    def run_all(self) -> Dict[str, Any]:
         with self._lock:
             items = [dict(entry) for entry in self._items if entry.get("enabled", True)]
         if items:
@@ -406,7 +406,7 @@ class HostsManager:
     # ------------------------------------------------------------------ #
     #  Представление для API и интерфейса
     # ------------------------------------------------------------------ #
-    def summary(self) -> dict[str, int]:
+    def summary(self) -> Dict[str, int]:
         with self._lock:
             items = [dict(entry) for entry in self._items]
             states = {key: dict(value) for key, value in self._states.items()}
@@ -419,7 +419,7 @@ class HostsManager:
             counts[state] += 1
         return counts
 
-    def public_state(self) -> dict[str, Any]:
+    def public_state(self) -> Dict[str, Any]:
         """Короткая сводка для верхней панели и системных уведомлений."""
         snapshot = self.snapshot()
         return {
@@ -434,12 +434,12 @@ class HostsManager:
             ],
         }
 
-    def snapshot(self) -> dict[str, Any]:
+    def snapshot(self) -> Dict[str, Any]:
         now = time.time()
         with self._lock:
             items = [dict(entry) for entry in self._items]
             states = {key: dict(value) for key, value in self._states.items()}
-        output: list[dict[str, Any]] = []
+        output: List[Dict[str, Any]] = []
         latest = 0.0
         for item in items:
             row = dict(item)
@@ -488,12 +488,12 @@ class HostsManager:
             "checked": iso(latest) if latest else "",
         }
 
-    def alerts(self) -> list[dict[str, Any]]:
+    def alerts(self) -> List[Dict[str, Any]]:
         now = time.time()
         with self._lock:
             items = [dict(entry) for entry in self._items]
             states = {key: dict(value) for key, value in self._states.items()}
-        alerts: list[dict[str, Any]] = []
+        alerts: List[Dict[str, Any]] = []
         for item in items:
             if not item.get("enabled", True):
                 continue

@@ -25,7 +25,7 @@ import uuid
 from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from .config import CONFIGS_DIR, Config
 from .i18n import t
@@ -77,7 +77,7 @@ class Target:
     id: str = field(default_factory=lambda: uuid.uuid4().hex[:8])
 
     # runtime-состояние (не сохраняется в конфиг)
-    healthy: bool | None = None
+    healthy: Optional[bool] = None
     checks: int = 0
     ok_checks: int = 0
     fails: int = 0
@@ -96,7 +96,7 @@ class Target:
     def address(self) -> str:
         return f"{self.host}:{self.port}"
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> Dict[str, Any]:
         total = self.requests + self.errors
         return {
             "id": self.id,
@@ -121,12 +121,12 @@ class Target:
             "last_error": self.last_error,
         }
 
-    def to_config(self) -> dict[str, Any]:
+    def to_config(self) -> Dict[str, Any]:
         return {"id": self.id, "host": self.host, "port": self.port,
                 "weight": self.weight, "note": self.note}
 
 
-def _validate_target(data: dict[str, Any]) -> Target | str:
+def _validate_target(data: Dict[str, Any]) -> Union[Target, str]:
     host = str(data.get("host", "")).strip()
     if not host or len(host) > 253:
         return t("balancer.invalidHost")
@@ -149,7 +149,7 @@ def _validate_target(data: dict[str, Any]) -> Target | str:
 # --------------------------------------------------------------------------- #
 
 class Balancer:
-    def __init__(self, manager: "BalancerManager", data: dict[str, Any]) -> None:
+    def __init__(self, manager: "BalancerManager", data: Dict[str, Any]) -> None:
         self.manager = manager
         self.name = safe_id(str(data.get("name", "")), "") or f"balancer-{uuid.uuid4().hex[:4]}"
         self.listen_host = str(data.get("listen_host", "127.0.0.1") or "127.0.0.1")
@@ -176,24 +176,24 @@ class Balancer:
             "timeout_s": max(1, min(30, int(health.get("timeout_s", 3) or 3))),
             "ok_status_max": int(health.get("ok_status_max", 499) or 499),
         }
-        self.targets: list[Target] = []
+        self.targets: List[Target] = []
         for item in data.get("targets", []) or []:
             target = _validate_target(item)
             if isinstance(target, Target):
                 self.targets.append(target)
 
         self.running = False
-        self.started_at: float | None = None
+        self.started_at: Optional[float] = None
         self.error = ""
-        self._server: asyncio.AbstractServer | None = None
-        self._tasks: list[asyncio.Task] = []
-        self._metrics: deque[dict[str, Any]] = deque(maxlen=900)
+        self._server: Optional[asyncio.AbstractServer] = None
+        self._tasks: List[asyncio.Task] = []
+        self._metrics: deque[Dict[str, Any]] = deque(maxlen=900)
         self._latencies: deque[float] = deque(maxlen=300)
-        self._last_counters: dict[str, int] = {}
-        self._loop: asyncio.AbstractEventLoop | None = None
+        self._last_counters: Dict[str, int] = {}
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
 
     # ------------------------------------------------------------------ #
-    def to_dict(self, with_stats: bool = True) -> dict[str, Any]:
+    def to_dict(self, with_stats: bool = True) -> Dict[str, Any]:
         data = {
             "name": self.name,
             "listen_host": self.listen_host,
@@ -225,7 +225,7 @@ class Balancer:
             data["weight_total"] = sum(t.weight for t in self.targets) or 0
         return data
 
-    def to_config(self) -> dict[str, Any]:
+    def to_config(self) -> Dict[str, Any]:
         return {
             "name": self.name,
             "listen_host": self.listen_host,
@@ -237,8 +237,8 @@ class Balancer:
             "targets": [t.to_config() for t in self.targets],
         }
 
-    def set_targets(self, targets: list[dict[str, Any]]) -> str | None:
-        fresh: list[Target] = []
+    def set_targets(self, targets: List[Dict[str, Any]]) -> Optional[str]:
+        fresh: List[Target] = []
         for item in targets or []:
             target = _validate_target(item)
             if isinstance(target, str):
@@ -259,7 +259,7 @@ class Balancer:
     # ------------------------------------------------------------------ #
     #  Жизненный цикл
     # ------------------------------------------------------------------ #
-    async def start(self) -> dict[str, Any]:
+    async def start(self) -> Dict[str, Any]:
         if self.running:
             return {"ok": True, "note": t("balancer.alreadyRunning")}
         if not self.targets:
@@ -290,7 +290,7 @@ class Balancer:
         self._tasks.append(asyncio.create_task(self.metrics_loop()))
         return {"ok": True, "listen": f"{self.listen_host}:{self.listen_port}", "port": self.listen_port}
 
-    async def stop(self) -> dict[str, Any]:
+    async def stop(self) -> Dict[str, Any]:
         if not self.running:
             return {"ok": True, "note": t("balancer.notRunning")}
         self.running = False
@@ -311,13 +311,13 @@ class Balancer:
     # ------------------------------------------------------------------ #
     #  Выбор бэкенда
     # ------------------------------------------------------------------ #
-    def healthy_targets(self) -> list[Target]:
+    def healthy_targets(self) -> List[Target]:
         candidates = [t for t in self.targets if t.healthy is not False]
         if candidates:
             return candidates
         return []  # все известны как мёртвые — не льём трафик
 
-    def pick(self, client_ip: str = "") -> Target | None:
+    def pick(self, client_ip: str = "") -> Optional[Target]:
         candidates = self.healthy_targets()
         if not candidates:
             return None
@@ -335,7 +335,7 @@ class Balancer:
             weights = [max(1, t.weight) for t in candidates]
             return random.choices(candidates, weights=weights, k=1)[0]
         total = 0
-        best: Target | None = None
+        best: Optional[Target] = None
         for target in candidates:
             target._cw += max(1, target.weight)
             total += max(1, target.weight)
@@ -372,7 +372,7 @@ class Balancer:
         parts = request_line.split(" ", 2)
         method = parts[0] if parts else "GET"
         path = parts[1] if len(parts) > 1 else "/"
-        headers: list[tuple[str, str]] = []
+        headers: List[Tuple[str, str]] = []
         for line in lines[1:]:
             if not line or ":" not in line:
                 continue
@@ -403,9 +403,9 @@ class Balancer:
             last_error = result
         await self._send_simple(writer, 502, "Bad Gateway", detail=last_error)
 
-    async def _read_request_body(self, reader: asyncio.StreamReader, header_map: dict[str, str]) -> bytes:
+    async def _read_request_body(self, reader: asyncio.StreamReader, header_map: Dict[str, str]) -> bytes:
         if header_map.get("transfer-encoding", "").lower().startswith("chunked"):
-            chunks: list[bytes] = []
+            chunks: List[bytes] = []
             total = 0
             while True:
                 size_line = await reader.readline()
@@ -438,9 +438,9 @@ class Balancer:
         except asyncio.IncompleteReadError as exc:
             return exc.partial
 
-    async def _forward(self, target: Target, method: str, path: str, headers: list[tuple[str, str]],
-                       header_map: dict[str, str], body: bytes,
-                       client_writer: asyncio.StreamWriter, client_ip: str) -> str | None:
+    async def _forward(self, target: Target, method: str, path: str, headers: List[Tuple[str, str]],
+                       header_map: Dict[str, str], body: bytes,
+                       client_writer: asyncio.StreamWriter, client_ip: str) -> Optional[str]:
         timeout = self.health.get("timeout_s", 5) or 5
         start = time.perf_counter()
         target.requests += 1
@@ -656,7 +656,7 @@ class Balancer:
             if target.fails >= 2:
                 target.healthy = False
 
-    async def _http_check(self, target: Target, timeout: float) -> tuple[bool, str]:
+    async def _http_check(self, target: Target, timeout: float) -> Tuple[bool, str]:
         reader, writer = await asyncio.wait_for(
             asyncio.open_connection(target.host, target.port), timeout=timeout)
         try:
@@ -701,7 +701,7 @@ class Balancer:
             previous_requests = total_requests
             previous_ts = now
 
-    def history(self) -> dict[str, Any]:
+    def history(self) -> Dict[str, Any]:
         points = list(self._metrics)
         return {
             "ts": [round(p["ts"], 1) for p in points],
@@ -819,7 +819,7 @@ class Balancer:
 class BalancerManager:
     def __init__(self, cfg: Config) -> None:
         self.cfg = cfg
-        self.balancers: dict[str, Balancer] = {}
+        self.balancers: Dict[str, Balancer] = {}
         self.exports_dir = ensure_dir(CONFIGS_DIR / "balancers")
         self.load()
 
@@ -837,15 +837,15 @@ class BalancerManager:
         self.cfg.save()
 
     # ------------------------------------------------------------------ #
-    def list_all(self) -> list[dict[str, Any]]:
+    def list_all(self) -> List[Dict[str, Any]]:
         # Подписи алгоритмов отдаются в том же ответе API — обновляем их под язык.
         _refresh_algorithm_labels()
         return [b.to_dict() for b in self.balancers.values()]
 
-    def get(self, name: str) -> Balancer | None:
+    def get(self, name: str) -> Optional[Balancer]:
         return self.balancers.get(safe_id(name, ""))
 
-    def create(self, data: dict[str, Any]) -> dict[str, Any]:
+    def create(self, data: Dict[str, Any]) -> Dict[str, Any]:
         name = safe_id(str(data.get("name", "")), "")
         if not name:
             return {"ok": False, "error": t("balancer.nameRequired")}
@@ -865,7 +865,7 @@ class BalancerManager:
         self.save()
         return {"ok": True, "balancer": balancer.to_dict()}
 
-    def update(self, name: str, patch: dict[str, Any]) -> dict[str, Any]:
+    def update(self, name: str, patch: Dict[str, Any]) -> Dict[str, Any]:
         balancer = self.get(name)
         if not balancer:
             return {"ok": False, "error": t("balancer.notFound")}
@@ -907,7 +907,7 @@ class BalancerManager:
         self.save()
         return {"ok": True, "balancer": balancer.to_dict()}
 
-    async def delete(self, name: str) -> dict[str, Any]:
+    async def delete(self, name: str) -> Dict[str, Any]:
         balancer = self.get(name)
         if not balancer:
             return {"ok": False, "error": t("balancer.notFound")}
@@ -916,7 +916,7 @@ class BalancerManager:
         self.save()
         return {"ok": True}
 
-    async def start(self, name: str) -> dict[str, Any]:
+    async def start(self, name: str) -> Dict[str, Any]:
         balancer = self.get(name)
         if not balancer:
             return {"ok": False, "error": t("balancer.notFound")}
@@ -925,7 +925,7 @@ class BalancerManager:
             self.save()
         return result
 
-    async def stop(self, name: str) -> dict[str, Any]:
+    async def stop(self, name: str) -> Dict[str, Any]:
         balancer = self.get(name)
         if not balancer:
             return {"ok": False, "error": t("balancer.notFound")}
@@ -935,7 +935,7 @@ class BalancerManager:
         for balancer in list(self.balancers.values()):
             await balancer.stop()
 
-    async def autostart(self) -> list[str]:
+    async def autostart(self) -> List[str]:
         started = []
         for balancer in self.balancers.values():
             if balancer.autostart and not balancer.running:
@@ -945,12 +945,12 @@ class BalancerManager:
         return started
 
     # ------------------------------------------------------------------ #
-    def export(self, name: str, fmt: str = "nginx", write_file: bool = False) -> dict[str, Any]:
+    def export(self, name: str, fmt: str = "nginx", write_file: bool = False) -> Dict[str, Any]:
         balancer = self.get(name)
         if not balancer:
             return {"ok": False, "error": t("balancer.notFound")}
         content = balancer.export(fmt)
-        result: dict[str, Any] = {"ok": True, "format": fmt, "content": content}
+        result: Dict[str, Any] = {"ok": True, "format": fmt, "content": content}
         if write_file:
             extension = {"nginx": "nginx.conf", "haproxy": "haproxy.cfg", "json": "balancer.json"}.get(fmt, "config.txt")
             path: Path = self.exports_dir / f"{balancer.name}.{extension}"
@@ -958,8 +958,8 @@ class BalancerManager:
             result["path"] = str(path)
         return result
 
-    def alerts(self) -> list[dict[str, Any]]:
-        alerts: list[dict[str, Any]] = []
+    def alerts(self) -> List[Dict[str, Any]]:
+        alerts: List[Dict[str, Any]] = []
         for balancer in self.balancers.values():
             if not balancer.running:
                 continue
@@ -985,7 +985,7 @@ class BalancerManager:
                 })
         return alerts
 
-    def public_state(self) -> dict[str, Any]:
+    def public_state(self) -> Dict[str, Any]:
         return {
             "count": len(self.balancers),
             "running": len([b for b in self.balancers.values() if b.running]),

@@ -18,7 +18,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Union
 
 from .i18n import t
 
@@ -43,11 +43,11 @@ class CmdResult:
     out: str = ""
     err: str = ""
     duration: float = 0.0
-    cmd: list[str] = field(default_factory=list)
+    cmd: List[str] = field(default_factory=list)
     missing: bool = False  # бинарник не найден в системе
     error: str = ""  # текстовая причина сбоя (timeout и т.п.)
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> Dict[str, Any]:
         return {
             "ok": self.ok,
             "code": self.code,
@@ -58,14 +58,14 @@ class CmdResult:
             "error": self.error,
         }
 
-    def lines(self, limit: int | None = None) -> list[str]:
+    def lines(self, limit: Optional[int] = None) -> List[str]:
         data = (self.out or "").splitlines()
         if limit:
             data = data[:limit]
         return data
 
 
-def which(name: str, override: str | None = None) -> str | None:
+def which(name: str, override: Optional[str] = None) -> Optional[str]:
     """Ищет бинарник: сначала пользовательский путь из настроек, потом PATH."""
     if override:
         p = Path(override)
@@ -79,10 +79,10 @@ def which(name: str, override: str | None = None) -> str | None:
 def run(
     cmd: Sequence[str],
     timeout: float = 20.0,
-    cwd: str | os.PathLike | None = None,
-    env: dict[str, str] | None = None,
-    input_text: str | None = None,
-    extra_env: dict[str, str] | None = None,
+    cwd: Optional[Union[str, os.PathLike]] = None,
+    env: Optional[Dict[str, str]] = None,
+    input_text: Optional[str] = None,
+    extra_env: Optional[Dict[str, str]] = None,
 ) -> CmdResult:
     """Запускает команду и возвращает CmdResult. Никогда не бросает исключений."""
     argv = [str(c) for c in cmd]
@@ -129,7 +129,7 @@ def run(
                          duration=time.perf_counter() - started)
 
 
-def run_json(cmd: Sequence[str], **kwargs: Any) -> Any | None:
+def run_json(cmd: Sequence[str], **kwargs: Any) -> Optional[Any]:
     """Запускает команду и пытается разобрать stdout как JSON."""
     res = run(cmd, **kwargs)
     if not res.ok or not res.out.strip():
@@ -140,9 +140,9 @@ def run_json(cmd: Sequence[str], **kwargs: Any) -> Any | None:
         return None
 
 
-def json_lines(text: str) -> list[dict[str, Any]]:
+def json_lines(text: str) -> List[Dict[str, Any]]:
     """Парсит построчный JSON (docker --format '{{json .}}')."""
-    items: list[dict[str, Any]] = []
+    items: List[Dict[str, Any]] = []
     for line in (text or "").splitlines():
         line = line.strip().rstrip(",")
         if not line or line in ("[", "]"):
@@ -158,7 +158,7 @@ def json_lines(text: str) -> list[dict[str, Any]]:
     return items
 
 
-def json_any(text: str) -> Any | None:
+def json_any(text: str) -> Optional[Any]:
     """Достаёт первый JSON-массив/объект из текста вывода (терпимо к мусору)."""
     text = (text or "").strip()
     if not text:
@@ -182,7 +182,7 @@ def json_any(text: str) -> Any | None:
 #  Форматирование значений
 # --------------------------------------------------------------------------- #
 
-def human_bytes(value: float | int | None, suffix: str = "B") -> str:
+def human_bytes(value: Optional[Union[float, int]], suffix: str = "B") -> str:
     if value is None:
         return "—"
     value = float(value)
@@ -195,13 +195,13 @@ def human_bytes(value: float | int | None, suffix: str = "B") -> str:
     return f"{value:.1f} P{suffix}"
 
 
-def human_rate(value: float | None) -> str:
+def human_rate(value: Optional[float]) -> str:
     if value is None:
         return "—"
     return t("util.perSecond", value=human_bytes(value))
 
 
-def human_duration(seconds: float | int | None) -> str:
+def human_duration(seconds: Optional[Union[float, int]]) -> str:
     if seconds is None:
         return "—"
     seconds = int(max(0, seconds))
@@ -217,7 +217,7 @@ def human_duration(seconds: float | int | None) -> str:
     return t("util.durationSeconds", secs=secs)
 
 
-def human_pct(value: float | None, digits: int = 1) -> str:
+def human_pct(value: Optional[float], digits: int = 1) -> str:
     if value is None:
         return "—"
     return f"{value:.{digits}f}%"
@@ -235,12 +235,12 @@ def now_ts() -> float:
     return time.time()
 
 
-def iso(ts: float | None = None) -> str:
+def iso(ts: Optional[float] = None) -> str:
     dt = datetime.fromtimestamp(ts if ts is not None else time.time(), tz=timezone.utc)
     return dt.astimezone().isoformat(timespec="seconds")
 
 
-def parse_iso(text: str | None) -> float | None:
+def parse_iso(text: Optional[str]) -> Optional[float]:
     if not text:
         return None
     try:
@@ -253,18 +253,44 @@ def parse_iso(text: str | None) -> float | None:
 #  Файлы и строки
 # --------------------------------------------------------------------------- #
 
-def ensure_dir(path: str | os.PathLike) -> Path:
+def ensure_dir(path: Union[str, os.PathLike]) -> Path:
     p = Path(path)
     p.mkdir(parents=True, exist_ok=True)
     return p
 
 
-def atomic_write(path: str | os.PathLike, text: str, mode: int | None = None) -> None:
+def is_within(path: Union[str, os.PathLike], root: Union[str, os.PathLike]) -> bool:
+    """True, если путь лежит внутри root (замена Path.is_relative_to из 3.9)."""
+    try:
+        Path(path).resolve().relative_to(Path(root).resolve())
+    except (OSError, ValueError):
+        return False
+    return True
+
+
+def write_text(path: Union[str, os.PathLike], text: str, mode: Optional[int] = None) -> None:
+    """Пишет текст, сохраняя переводы строк.
+
+    `Path.write_text(newline=...)` появился только в Python 3.10, поэтому
+    используем обычный open — поведение одинаково на всех поддерживаемых версиях.
+    """
+    target = Path(path)
+    ensure_dir(target.parent)
+    with open(target, "w", encoding="utf-8", newline="") as handle:
+        handle.write(text)
+    if mode is not None:
+        try:
+            os.chmod(target, mode)
+        except OSError:
+            pass
+
+
+def atomic_write(path: Union[str, os.PathLike], text: str, mode: Optional[int] = None) -> None:
     """Пишет файл через временный, чтобы не оставить «половину» при сбое."""
     target = Path(path)
     ensure_dir(target.parent)
     tmp = target.with_name(target.name + ".tmp-megatool")
-    tmp.write_text(text, encoding="utf-8", newline="")
+    write_text(tmp, text)
     if mode is not None and not IS_WINDOWS:
         try:
             os.chmod(tmp, mode)
@@ -278,35 +304,35 @@ def atomic_write(path: str | os.PathLike, text: str, mode: int | None = None) ->
             pass
 
 
-def read_text(path: str | os.PathLike, max_bytes: int | None = None) -> str:
+def read_text(path: Union[str, os.PathLike], max_bytes: Optional[int] = None) -> str:
     data = Path(path).read_bytes()
     if max_bytes is not None and len(data) > max_bytes:
         data = data[:max_bytes]
     return data.decode("utf-8", errors="replace")
 
 
-def read_json(path: str | os.PathLike, default: Any = None) -> Any:
+def read_json(path: Union[str, os.PathLike], default: Any = None) -> Any:
     try:
         return json.loads(Path(path).read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return default
 
 
-def write_json(path: str | os.PathLike, data: Any, mode: int | None = None) -> None:
+def write_json(path: Union[str, os.PathLike], data: Any, mode: Optional[int] = None) -> None:
     atomic_write(path, json.dumps(data, ensure_ascii=False, indent=2), mode=mode)
 
 
-def append_jsonl(path: str | os.PathLike, data: dict[str, Any]) -> None:
+def append_jsonl(path: Union[str, os.PathLike], data: Dict[str, Any]) -> None:
     ensure_dir(Path(path).parent)
     with open(path, "a", encoding="utf-8") as fh:
         fh.write(json.dumps(data, ensure_ascii=False) + "\n")
 
 
-def read_jsonl(path: str | os.PathLike, limit: int | None = None) -> list[dict[str, Any]]:
+def read_jsonl(path: Union[str, os.PathLike], limit: Optional[int] = None) -> List[Dict[str, Any]]:
     p = Path(path)
     if not p.is_file():
         return []
-    out: list[dict[str, Any]] = []
+    out: List[Dict[str, Any]] = []
     try:
         for line in p.read_text(encoding="utf-8", errors="replace").splitlines():
             line = line.strip()
@@ -325,7 +351,7 @@ def read_jsonl(path: str | os.PathLike, limit: int | None = None) -> list[dict[s
     return out
 
 
-def tail_lines(text: str, count: int) -> list[str]:
+def tail_lines(text: str, count: int) -> List[str]:
     lines = (text or "").splitlines()
     return lines[-count:] if count > 0 else lines
 
@@ -368,9 +394,9 @@ def redact(value: str, keep: int = 4) -> str:
     return value[:keep] + "•" * min(12, len(value) - keep)
 
 
-def split_kv(items: Iterable[str]) -> dict[str, str]:
+def split_kv(items: Iterable[str]) -> Dict[str, str]:
     """Преобразует ['a=1', 'b=2'] в словарь (значения могут содержать '=')."""
-    out: dict[str, str] = {}
+    out: Dict[str, str] = {}
     for item in items or []:
         if not item:
             continue

@@ -2,7 +2,7 @@
 
 export default {
   configs: {
-    title: "Configs",
+    title: "Files & configs",
     subtitle: "MegaTool workspace: {home}",
     filesCard: "Files",
     editorCard: "Editor",

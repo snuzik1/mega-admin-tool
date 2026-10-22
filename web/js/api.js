@@ -1,29 +1,4 @@
-/* API-клиент MegaTool: обёртки над fetch + WebSocket с переподключением.
-   Токен (если включён) хранится в localStorage и уходит заголовком X-MegaTool-Token. */
-
-const TOKEN_KEY = "megatool.token";
-const TOKEN_KEY_LEGACY = "megapet.token";  // ключ из версий до переименования
-
-export const session = {
-  get token() {
-    try {
-      return localStorage.getItem(TOKEN_KEY) || localStorage.getItem(TOKEN_KEY_LEGACY) || "";
-    } catch (error) {
-      return "";
-    }
-  },
-  set token(value) {
-    try {
-      if (value) localStorage.setItem(TOKEN_KEY, value);
-      else {
-        localStorage.removeItem(TOKEN_KEY);
-        localStorage.removeItem(TOKEN_KEY_LEGACY);
-      }
-    } catch (error) {
-      /* приватный режим — живём без сохранения */
-    }
-  },
-};
+/* API-клиент MegaTool: обёртки над fetch + WebSocket с переподключением. */
 
 export class ApiError extends Error {
   constructor(message, status, payload) {
@@ -47,7 +22,6 @@ async function request(method, path, { params, body, timeoutMs } = {}) {
   const url = buildUrl(path, params);
   const headers = { Accept: "application/json" };
   if (body !== undefined) headers["Content-Type"] = "application/json";
-  if (session.token) headers["X-MegaTool-Token"] = session.token;
 
   const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
   const timer = timeoutMs && controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
@@ -88,7 +62,6 @@ export const api = {
 export function openWS(path, { onMessage, onOpen, onClose } = {}) {
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   const url = new URL(path, `${protocol}//${window.location.host}`);
-  if (session.token) url.searchParams.set("token", session.token);
 
   let socket = null;
   let closed = false;

@@ -21,7 +21,7 @@ import shutil
 import threading
 import zipfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, List, Optional, Union
 
 from .changes import audit
 from .config import BUNDLES_DIR, Config
@@ -39,7 +39,7 @@ MAX_FILE_BYTES = 2 * 1024 * 1024
 _ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
 
 
-def _fail(key: str, **params: Any) -> dict[str, Any]:
+def _fail(key: str, **params: Any) -> Dict[str, Any]:
     """Ответ об ошибке с локализованным текстом (ключи словаря bundles.*)."""
     return {"ok": False, "error": t(key, **params)}
 
@@ -48,7 +48,7 @@ def _fail(key: str, **params: Any) -> dict[str, Any]:
 #  Шаблоны наборов
 # --------------------------------------------------------------------------- #
 
-PRESETS: list[dict[str, Any]] = [
+PRESETS: List[Dict[str, Any]] = [
     {
         "id": "dev-server",
         "title": "Сервер для разработки",
@@ -856,7 +856,7 @@ class BundleStore:
             raise ValueError("bundles.badPath")
         return "/".join(parts)
 
-    def _bundle_dir(self, bid: str) -> Path | None:
+    def _bundle_dir(self, bid: str) -> Optional[Path]:
         """Каталог набора по идентификатору или None, если id небезопасен."""
         value = str(bid or "").strip().lower()
         if not _ID_RE.match(value):
@@ -884,7 +884,7 @@ class BundleStore:
     def _manifest_path(bundle_dir: Path) -> Path:
         return bundle_dir / MANIFEST_NAME
 
-    def _load(self, bundle_dir: Path) -> dict[str, Any] | None:
+    def _load(self, bundle_dir: Path) -> Optional[Dict[str, Any]]:
         data = read_json(self._manifest_path(bundle_dir), default=None)
         if not isinstance(data, dict):
             return None
@@ -892,12 +892,12 @@ class BundleStore:
             return None
         return data
 
-    def _files(self, bundle_dir: Path) -> list[dict[str, Any]]:
+    def _files(self, bundle_dir: Path) -> List[Dict[str, Any]]:
         """Список файлов набора с размерами и временем изменения."""
         base = bundle_dir / FILES_DIR
         if not base.is_dir():
             return []
-        items: list[dict[str, Any]] = []
+        items: List[Dict[str, Any]] = []
         try:
             paths = sorted(base.rglob("*"))
         except OSError:
@@ -916,13 +916,13 @@ class BundleStore:
             })
         return items
 
-    def _touch(self, bundle_dir: Path, manifest: dict[str, Any]) -> None:
+    def _touch(self, bundle_dir: Path, manifest: Dict[str, Any]) -> None:
         """Обновляет список файлов и метку времени в манифесте."""
         manifest["files"] = [item["path"] for item in self._files(bundle_dir)]
         manifest["updated_ts"] = now_ts()
         write_json(self._manifest_path(bundle_dir), manifest)
 
-    def _summary(self, bundle_dir: Path, manifest: dict[str, Any]) -> dict[str, Any]:
+    def _summary(self, bundle_dir: Path, manifest: Dict[str, Any]) -> Dict[str, Any]:
         files = self._files(bundle_dir)
         return {
             "id": manifest["id"],
@@ -941,9 +941,9 @@ class BundleStore:
     #  Список, чтение, создание
     # ------------------------------------------------------------------ #
 
-    def list(self) -> list[dict[str, Any]]:
+    def list(self) -> List[Dict[str, Any]]:
         """Краткий список наборов (без содержимого файлов), новые сверху."""
-        items: list[dict[str, Any]] = []
+        items: List[Dict[str, Any]] = []
         with self.lock:
             try:
                 children = sorted(self.dir.iterdir())
@@ -959,7 +959,7 @@ class BundleStore:
         items.sort(key=lambda item: item["updated_ts"], reverse=True)
         return items
 
-    def get(self, bid: str) -> dict[str, Any]:
+    def get(self, bid: str) -> Dict[str, Any]:
         """Полные данные набора: метаданные и список файлов."""
         with self.lock:
             bundle_dir = self._bundle_dir(bid)
@@ -973,7 +973,7 @@ class BundleStore:
             summary["ok"] = True
             return summary
 
-    def create(self, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    def create(self, payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Создаёт набор; preset копирует файлы шаблона."""
         data = payload or {}
         name = str(data.get("name") or "").strip()
@@ -1026,7 +1026,7 @@ class BundleStore:
             bid = f"{base}-{counter}"
         return bid
 
-    def save_meta(self, bid: str, patch: dict[str, Any] | None = None) -> dict[str, Any]:
+    def save_meta(self, bid: str, patch: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Обновляет имя и/или описание набора."""
         data = patch or {}
         with self.lock:
@@ -1061,7 +1061,7 @@ class BundleStore:
         audit("bundle.update", target=bid, detail=str(manifest.get("name", "")))
         return self.get(bid)
 
-    def delete(self, bid: str) -> dict[str, Any]:
+    def delete(self, bid: str) -> Dict[str, Any]:
         """Удаляет набор вместе со всеми файлами."""
         with self.lock:
             bundle_dir = self._bundle_dir(bid)
@@ -1080,7 +1080,7 @@ class BundleStore:
     #  Файлы
     # ------------------------------------------------------------------ #
 
-    def read_file(self, bid: str, path: str) -> dict[str, Any]:
+    def read_file(self, bid: str, path: str) -> Dict[str, Any]:
         """Читает файл набора как текст UTF-8."""
         with self.lock:
             bundle_dir = self._bundle_dir(bid)
@@ -1108,7 +1108,7 @@ class BundleStore:
             "modified": iso(stat.st_mtime),
         }
 
-    def write_file(self, bid: str, path: str, content: Any) -> dict[str, Any]:
+    def write_file(self, bid: str, path: str, content: Any) -> Dict[str, Any]:
         """Записывает файл набора (создаёт при необходимости)."""
         text = content if isinstance(content, str) else str(content or "")
         size = len(text.encode("utf-8"))
@@ -1146,7 +1146,7 @@ class BundleStore:
             "modified": iso(stat.st_mtime),
         }
 
-    def add_file(self, bid: str, path: str) -> dict[str, Any]:
+    def add_file(self, bid: str, path: str) -> Dict[str, Any]:
         """Создаёт пустой файл в наборе."""
         with self.lock:
             bundle_dir = self._bundle_dir(bid)
@@ -1181,7 +1181,7 @@ class BundleStore:
             "modified": iso(stat.st_mtime),
         }
 
-    def delete_file(self, bid: str, path: str) -> dict[str, Any]:
+    def delete_file(self, bid: str, path: str) -> Dict[str, Any]:
         """Удаляет файл набора и пустые каталоги после него."""
         with self.lock:
             bundle_dir = self._bundle_dir(bid)
@@ -1224,7 +1224,7 @@ class BundleStore:
     # ------------------------------------------------------------------ #
 
     @staticmethod
-    def presets() -> list[dict[str, Any]]:
+    def presets() -> List[Dict[str, Any]]:
         """Список шаблонов без содержимого файлов."""
         return [
             {
@@ -1238,7 +1238,7 @@ class BundleStore:
             for preset in PRESETS
         ]
 
-    def export_zip(self, bid: str) -> bytes | dict[str, Any]:
+    def export_zip(self, bid: str) -> Union[bytes, Dict[str, Any]]:
         """Собирает ZIP (bundle.json + files/...) в памяти.
 
         При ошибке возвращает словарь {"ok": False, "error": ...}.

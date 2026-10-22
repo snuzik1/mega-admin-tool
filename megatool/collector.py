@@ -16,7 +16,7 @@ import os
 import threading
 import time
 from collections import deque
-from typing import Any, Callable, Iterable
+from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple
 
 from .config import Config
 from .i18n import t
@@ -54,14 +54,14 @@ class Collector:
         interval_ms = int(cfg.get("monitor.interval_ms", 2000) or 2000)
         self.interval = max(0.5, interval_ms / 1000.0)
         history = int(cfg.get("monitor.history_points", 1800) or 1800)
-        self.points: deque[dict[str, Any]] = deque(maxlen=history)
+        self.points: deque[Dict[str, Any]] = deque(maxlen=history)
 
         self._lock = threading.RLock()
-        self._thread: threading.Thread | None = None
+        self._thread: Optional[threading.Thread] = None
         self._stop = threading.Event()
 
-        self.latest: dict[str, Any] = {}
-        self.state: dict[str, Any] = {
+        self.latest: Dict[str, Any] = {}
+        self.state: Dict[str, Any] = {
             "running": False,
             "started_at": None,
             "samples": 0,
@@ -71,19 +71,19 @@ class Collector:
             "last_error": "",
             "last_sample_ts": None,
         }
-        self._prev: dict[str, Any] = {}
-        self._proc_cache: dict[int, Any] = {}
+        self._prev: Dict[str, Any] = {}
+        self._proc_cache: Dict[int, Any] = {}
         # Тяжёлые обходы процессов кэшируются: число потоков — на 15 с,
         # лёгкий список процессов — на 2 с, полный (для поиска) — тоже на 2 с.
-        self._thread_count_cache: tuple[float, int] = (0.0, 0)
-        self._fast_rows_cache: tuple[float, list[dict[str, Any]]] | None = None
-        self._proc_rows_cache: dict[str, tuple[float, list[dict[str, Any]]]] = {}
-        self._pending_alerts: dict[str, float] = {}
-        self.alerts: dict[str, dict[str, Any]] = {}
-        self.alert_providers: dict[str, Callable[[], list[dict[str, Any]]]] = {}
-        self._provider_ts: dict[str, float] = {}
-        self.subscribers: set[Any] = set()
-        self._last_full: dict[str, Any] = {}
+        self._thread_count_cache: Tuple[float, int] = (0.0, 0)
+        self._fast_rows_cache: Optional[Tuple[float, List[Dict[str, Any]]]] = None
+        self._proc_rows_cache: Dict[str, Tuple[float, List[Dict[str, Any]]]] = {}
+        self._pending_alerts: Dict[str, float] = {}
+        self.alerts: Dict[str, Dict[str, Any]] = {}
+        self.alert_providers: Dict[str, Callable[[], List[Dict[str, Any]]]] = {}
+        self._provider_ts: Dict[str, float] = {}
+        self.subscribers: Set[Any] = set()
+        self._last_full: Dict[str, Any] = {}
         self._last_full_ts = 0.0
 
     # ------------------------------------------------------------------ #
@@ -115,7 +115,7 @@ class Collector:
         with self._lock:
             self.subscribers.discard(queue)
 
-    def _publish(self, payload: dict[str, Any]) -> None:
+    def _publish(self, payload: Dict[str, Any]) -> None:
         with self._lock:
             targets = list(self.subscribers)
         for queue in targets:
@@ -153,9 +153,9 @@ class Collector:
     # ------------------------------------------------------------------ #
     #  Сэмпл
     # ------------------------------------------------------------------ #
-    def _sample(self) -> dict[str, Any]:
+    def _sample(self) -> Dict[str, Any]:
         ts = time.time()
-        point: dict[str, Any] = {"ts": ts, "iso": iso(ts)}
+        point: Dict[str, Any] = {"ts": ts, "iso": iso(ts)}
 
         if psutil is not None:
             point["cpu"] = round(psutil.cpu_percent(interval=None), 1)
@@ -244,7 +244,7 @@ class Collector:
         except Exception:
             return []
 
-    def _net_counters(self) -> dict[str, Any]:
+    def _net_counters(self) -> Dict[str, Any]:
         if psutil is None:
             return {"rx": 0, "tx": 0, "packets_rx": 0, "packets_tx": 0, "errors": 0, "drops": 0, "per_nic": []}
         try:
@@ -269,7 +269,7 @@ class Collector:
         except Exception:
             return {"rx": 0, "tx": 0, "packets_rx": 0, "packets_tx": 0, "errors": 0, "drops": 0, "per_nic": []}
 
-    def _disk_counters(self) -> dict[str, Any]:
+    def _disk_counters(self) -> Dict[str, Any]:
         if psutil is None or not hasattr(psutil, "disk_io_counters"):
             return {"read": 0, "write": 0, "read_iops": 0, "write_iops": 0, "per_disk": []}
         try:
@@ -292,22 +292,22 @@ class Collector:
         except Exception:
             return {"read": 0, "write": 0, "read_iops": 0, "write_iops": 0, "per_disk": []}
 
-    def _disk_usage(self) -> list[dict[str, Any]]:
+    def _disk_usage(self) -> List[Dict[str, Any]]:
         return static_info().get("disks", [])
 
-    def _temps(self) -> list[dict[str, Any]]:
+    def _temps(self) -> List[Dict[str, Any]]:
         return static_info().get("temperatures", [])
 
     # ------------------------------------------------------------------ #
     #  Алерты
     # ------------------------------------------------------------------ #
-    def _refresh_alerts(self, point: dict[str, Any]) -> None:
+    def _refresh_alerts(self, point: Dict[str, Any]) -> None:
         thresholds = self.cfg.get("monitor.thresholds", {}) or {}
         sustain = float(thresholds.get("sustain_sec", 20) or 20)
         cores = (static_info().get("cpu", {}).get("cores_logical") or os.cpu_count() or 1)
         now = point["ts"]
 
-        checks: list[tuple[str, bool, str, str, Any, str]] = [
+        checks: List[Tuple[str, bool, str, str, Any, str]] = [
             ("cpu", (point.get("cpu") or 0) >= float(thresholds.get("cpu_pct", 90)),
              "critical", t("collector.cpuHigh"),
              t("collector.cpuHighDetail", value=point.get("cpu"), limit=thresholds.get("cpu_pct")),
@@ -369,7 +369,7 @@ class Collector:
                     item["active"] = True
                     self.alerts[item["id"]] = item
 
-    def active_alerts(self) -> list[dict[str, Any]]:
+    def active_alerts(self) -> List[Dict[str, Any]]:
         with self._lock:
             items = list(self.alerts.values())
         items.sort(key=lambda a: (SEVERITY_ORDER.get(a.get("severity", "info"), 3), a.get("title", "")))
@@ -382,7 +382,7 @@ class Collector:
     # ------------------------------------------------------------------ #
     #  Публичные представления
     # ------------------------------------------------------------------ #
-    def public_state(self) -> dict[str, Any]:
+    def public_state(self) -> Dict[str, Any]:
         with self._lock:
             state = dict(self.state)
             state["buffered_points"] = len(self.points)
@@ -391,7 +391,7 @@ class Collector:
         state["last_point_iso"] = iso(state.get("last_sample_ts")) if state.get("last_sample_ts") else None
         return state
 
-    def snapshot(self, with_details: bool = True) -> dict[str, Any]:
+    def snapshot(self, with_details: bool = True) -> Dict[str, Any]:
         """Последние метрики. with_details добавляет диски/сеть/температуры/топ процессов."""
         now = time.time()
         if with_details and self._last_full and now - self._last_full_ts < 1.0:
@@ -413,7 +413,7 @@ class Collector:
         self._last_full_ts = now
         return data
 
-    def history(self, minutes: int = 30, series: list[str] | None = None) -> dict[str, Any]:
+    def history(self, minutes: int = 30, series: Optional[List[str]] = None) -> Dict[str, Any]:
         """Окно истории. series=None — все известные серии."""
         series = list(series or SERIES_LABELS.keys())
         cutoff = time.time() - max(1, minutes) * 60
@@ -430,7 +430,7 @@ class Collector:
             out["labels"][key] = t(f"collector.series.{key}") if key in SERIES_LABELS else key
         return out
 
-    def summarize(self) -> dict[str, Any]:
+    def summarize(self) -> Dict[str, Any]:
         """Короткая сводка для верхней панели/карточек."""
         point = self.latest or {}
         return {
@@ -450,7 +450,7 @@ class Collector:
     # ------------------------------------------------------------------ #
     #  Процессы
     # ------------------------------------------------------------------ #
-    def processes(self, sort: str = "cpu", limit: int = 50, query: str = "") -> list[dict[str, Any]]:
+    def processes(self, sort: str = "cpu", limit: int = 50, query: str = "") -> List[Dict[str, Any]]:
         if psutil is None:
             return []
         query = (query or "").lower().strip()
@@ -474,7 +474,7 @@ class Collector:
         }
         return key_map.get(sort, key_map["cpu"])
 
-    def _processes_fast(self, sort: str, limit: int) -> list[dict[str, Any]]:
+    def _processes_fast(self, sort: str, limit: int) -> List[Dict[str, Any]]:
         """Быстрый путь для таблицы процессов: лёгкий обход всех процессов,
         затем подробности только для тех, кто попал в топ.
 
@@ -506,7 +506,7 @@ class Collector:
             ordered = sorted(rows, key=lambda r: r["pid"], reverse=True)
         else:  # cpu / cpu_time / прочее
             ordered = sorted(rows, key=lambda r: r["cpu"], reverse=True)
-        out: list[dict[str, Any]] = []
+        out: List[Dict[str, Any]] = []
         for row in ordered[:limit]:
             detail = self._process_details(row["pid"])
             if detail is None:
@@ -517,7 +517,7 @@ class Collector:
         return out
 
     @staticmethod
-    def _process_details(pid: int) -> dict[str, Any] | None:
+    def _process_details(pid: int) -> Optional[Dict[str, Any]]:
         """Подробности одного процесса: недоступные поля подменяются заглушками."""
         try:
             proc = psutil.Process(pid)
@@ -546,15 +546,15 @@ class Collector:
             "cmdline": " ".join(str(c) for c in cmdline)[:300] or name,
         }
 
-    def _scan_processes(self, query: str = "") -> list[dict[str, Any]]:
+    def _scan_processes(self, query: str = "") -> List[Dict[str, Any]]:
         """Полный обход процессов (для поиска) с коротким кэшем на 2 секунды."""
         cached = self._proc_rows_cache.get(query)
         if cached is not None and time.monotonic() - cached[0] < 2.0:
             return cached[1]
         attrs = ["pid", "ppid", "name", "username", "status", "memory_info",
                  "num_threads", "create_time", "cmdline", "cpu_percent", "memory_percent"]
-        rows: list[dict[str, Any]] = []
-        alive: set[int] = set()
+        rows: List[Dict[str, Any]] = []
+        alive: Set[int] = set()
         for proc in self._iter_procs(attrs):
             try:
                 pid = proc.info["pid"]
@@ -584,7 +584,7 @@ class Collector:
         self._proc_rows_cache = {query: (time.monotonic(), rows)}
         return rows
 
-    def process_detail(self, pid: int) -> dict[str, Any] | None:
+    def process_detail(self, pid: int) -> Optional[Dict[str, Any]]:
         if psutil is None:
             return None
         try:
@@ -613,7 +613,7 @@ class Collector:
         except Exception as exc:
             return {"pid": pid, "error": str(exc)}
 
-    def kill_process(self, pid: int, force: bool = False) -> dict[str, Any]:
+    def kill_process(self, pid: int, force: bool = False) -> Dict[str, Any]:
         if psutil is None:
             return {"ok": False, "error": t("collector.psutilMissing")}
         if not self.cfg.get("safety.allow_process_kill", True):
@@ -634,7 +634,7 @@ class Collector:
     # ------------------------------------------------------------------ #
     #  Сеть
     # ------------------------------------------------------------------ #
-    def connection_summary(self) -> dict[str, Any]:
+    def connection_summary(self) -> Dict[str, Any]:
         if psutil is None:
             return {"available": False, "total": 0, "by_status": {}, "listening": 0}
         try:
@@ -642,7 +642,7 @@ class Collector:
         except Exception:
             return {"available": False, "total": 0, "by_status": {}, "listening": 0,
                     "error": t("collector.adminRequired")}
-        by_status: dict[str, int] = {}
+        by_status: Dict[str, int] = {}
         listening = 0
         for conn in conns:
             status = conn.status or "NONE"
@@ -651,7 +651,7 @@ class Collector:
                 listening += 1
         return {"available": True, "total": len(conns), "by_status": by_status, "listening": listening}
 
-    def connections(self, limit: int = 100) -> list[dict[str, Any]]:
+    def connections(self, limit: int = 100) -> List[Dict[str, Any]]:
         if psutil is None:
             return []
         out = []

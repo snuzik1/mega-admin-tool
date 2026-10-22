@@ -11,7 +11,7 @@ import re
 import threading
 import time
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from .config import AUDIT_LOG, Config, default_watch_paths
 from .i18n import t
@@ -24,7 +24,7 @@ SKIP_DIRS = {
     "System Volume Information", "$Recycle.Bin",
 }
 
-_CACHE: dict[str, Any] = {"ts": 0.0, "key": "", "data": None}
+_CACHE: Dict[str, Any] = {"ts": 0.0, "key": "", "data": None}
 _CACHE_TTL = 45.0
 _CACHE_LOCK = threading.Lock()
 
@@ -39,7 +39,7 @@ _AUDIT_MAX_MB = 5.0
 _AUDIT_KEEP = 3
 
 
-def collect(cfg: Config, hours: float = 24.0, file_limit: int = 150) -> dict[str, Any]:
+def collect(cfg: Config, hours: float = 24.0, file_limit: int = 150) -> Dict[str, Any]:
     """Собирает отчёт об изменениях за последние `hours` часов."""
     key = f"{hours}:{file_limit}:{','.join(cfg.get('monitor.watch_paths', []) or [])}"
     with _CACHE_LOCK:
@@ -70,12 +70,12 @@ def collect(cfg: Config, hours: float = 24.0, file_limit: int = 150) -> dict[str
 #  Файлы
 # --------------------------------------------------------------------------- #
 
-def _files_section(cfg: Config, hours: float, limit: int) -> dict[str, Any]:
+def _files_section(cfg: Config, hours: float, limit: int) -> Dict[str, Any]:
     roots = [p for p in (cfg.get("monitor.watch_paths") or []) if p]
     if not roots:
         roots = default_watch_paths()
     cutoff = time.time() - hours * 3600
-    found: list[dict[str, Any]] = []
+    found: List[Dict[str, Any]] = []
     scanned = 0
     for root in roots[:8]:
         base = Path(root)
@@ -123,9 +123,9 @@ def _files_section(cfg: Config, hours: float, limit: int) -> dict[str, Any]:
 _DPKG_RE = re.compile(r"^(?P<ts>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) (?P<action>\w+) (?P<pkg>[^ ]+) (?P<ver>[^ ]+)")
 
 
-def _packages_section(hours: float) -> dict[str, Any]:
+def _packages_section(hours: float) -> Dict[str, Any]:
     cutoff = time.time() - hours * 3600
-    items: list[dict[str, Any]] = []
+    items: List[Dict[str, Any]] = []
     source = ""
 
     if IS_LINUX:
@@ -143,8 +143,8 @@ def _packages_section(hours: float) -> dict[str, Any]:
     }
 
 
-def _packages_linux(cutoff: float) -> tuple[str, list[dict[str, Any]]]:
-    items: list[dict[str, Any]] = []
+def _packages_linux(cutoff: float) -> Tuple[str, List[Dict[str, Any]]]:
+    items: List[Dict[str, Any]] = []
     dpkg_log = Path("/var/log/dpkg.log")
     apt_history = Path("/var/log/apt/history.log")
     pacman_log = Path("/var/log/pacman.log")
@@ -226,8 +226,8 @@ def _packages_linux(cutoff: float) -> tuple[str, list[dict[str, Any]]]:
     return "", items
 
 
-def _packages_windows() -> tuple[str, list[dict[str, Any]]]:
-    items: list[dict[str, Any]] = []
+def _packages_windows() -> Tuple[str, List[Dict[str, Any]]]:
+    items: List[Dict[str, Any]] = []
     cmd = [
         "powershell", "-NoProfile", "-NonInteractive", "-Command",
         "Get-HotFix | Sort-Object InstalledOn -Descending | Select-Object -First 40 "
@@ -262,8 +262,8 @@ def _packages_windows() -> tuple[str, list[dict[str, Any]]]:
 #  Входы в систему
 # --------------------------------------------------------------------------- #
 
-def _logins_section() -> dict[str, Any]:
-    items: list[dict[str, Any]] = []
+def _logins_section() -> Dict[str, Any]:
+    items: List[Dict[str, Any]] = []
     source = ""
     if IS_LINUX:
         res = run(["last", "-n", "30", "-w"], timeout=10)
@@ -322,8 +322,8 @@ def _logins_section() -> dict[str, Any]:
 #  Службы
 # --------------------------------------------------------------------------- #
 
-def _services_section() -> dict[str, Any]:
-    items: list[dict[str, Any]] = []
+def _services_section() -> Dict[str, Any]:
+    items: List[Dict[str, Any]] = []
     source = ""
     if IS_LINUX and Path("/run/systemd/system").is_dir():
         res = run(["systemctl", "list-units", "--state=failed", "--no-pager", "--plain", "--no-legend"],
@@ -375,8 +375,8 @@ def _services_section() -> dict[str, Any]:
 #  Журналы
 # --------------------------------------------------------------------------- #
 
-def _logs_section(hours: float) -> dict[str, Any]:
-    items: list[dict[str, Any]] = []
+def _logs_section(hours: float) -> Dict[str, Any]:
+    items: List[Dict[str, Any]] = []
     source = ""
     since = max(1, int(hours))
     if IS_LINUX:
@@ -436,7 +436,7 @@ def _logs_section(hours: float) -> dict[str, Any]:
 #  Аудит действий в самой MegaTool
 # --------------------------------------------------------------------------- #
 
-def _audit_section(hours: float) -> dict[str, Any]:
+def _audit_section(hours: float) -> Dict[str, Any]:
     cutoff = time.time() - hours * 3600
     entries = read_jsonl(AUDIT_LOG, limit=1000)
     items = []
@@ -498,7 +498,7 @@ def _rotate_audit() -> None:
         pass
 
 
-def audit(action: str, target: str = "", detail: str = "", ok: bool = True, extra: dict[str, Any] | None = None) -> None:
+def audit(action: str, target: str = "", detail: str = "", ok: bool = True, extra: Optional[Dict[str, Any]] = None) -> None:
     """Записывает действие пользователя в журнал аудита."""
     payload = {
         "ts": iso(),
@@ -517,7 +517,7 @@ def audit(action: str, target: str = "", detail: str = "", ok: bool = True, extr
         pass
 
 
-def read_audit(limit: int = 200) -> list[dict[str, Any]]:
+def read_audit(limit: int = 200) -> List[Dict[str, Any]]:
     return list(reversed(read_jsonl(AUDIT_LOG, limit=limit)))
 
 
@@ -533,11 +533,11 @@ def _read_safe(path: Path, max_bytes: int = 1_000_000) -> str:
     return data[-max_bytes:].decode("utf-8", errors="replace")
 
 
-def _tail_lines_safe(path: Path, count: int) -> list[str]:
+def _tail_lines_safe(path: Path, count: int) -> List[str]:
     return _read_safe(path).splitlines()[-count:]
 
 
-def _parse_local_ts(text: str) -> float | None:
+def _parse_local_ts(text: str) -> Optional[float]:
     for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M"):
         try:
             return time.mktime(time.strptime(text.strip(), fmt))
@@ -546,7 +546,7 @@ def _parse_local_ts(text: str) -> float | None:
     return _parse_iso_like(text)
 
 
-def _parse_iso_like(text: str) -> float | None:
+def _parse_iso_like(text: str) -> Optional[float]:
     if not text:
         return None
     text = str(text).strip().replace("Z", "+00:00")

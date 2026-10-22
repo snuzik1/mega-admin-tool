@@ -11,7 +11,7 @@ import re
 import time
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, List, Set, Tuple
 
 from fastapi import APIRouter, Body, HTTPException, Query, Request
 
@@ -41,7 +41,7 @@ def rt(request: Request):
     return state
 
 
-def _ok(data: Any = None, **extra: Any) -> dict[str, Any]:
+def _ok(data: Any = None, **extra: Any) -> Dict[str, Any]:
     payload = {"ok": True}
     if data is not None:
         payload["data"] = data
@@ -49,27 +49,27 @@ def _ok(data: Any = None, **extra: Any) -> dict[str, Any]:
     return payload
 
 
-def _fail(message: str, **extra: Any) -> dict[str, Any]:
+def _fail(message: str, **extra: Any) -> Dict[str, Any]:
     payload = {"ok": False, "error": message}
     payload.update(extra)
     return payload
 
 
-def _as_dict(body: Any) -> dict[str, Any]:
+def _as_dict(body: Any) -> Dict[str, Any]:
     if isinstance(body, dict):
         return body
     return {}
 
 
 # Границы числовых настроек мониторинга: (минимум, максимум)
-_MONITOR_LIMITS: dict[str, tuple[float, float]] = {
+_MONITOR_LIMITS: Dict[str, Tuple[float, float]] = {
     "interval_ms": (500, 60000),
     "history_points": (60, 200000),
     "container_poll_sec": (5, 3600),
 }
 
 # Пороги предупреждений: (минимум, максимум), значения могут быть дробными
-_THRESHOLD_LIMITS: dict[str, tuple[float, float]] = {
+_THRESHOLD_LIMITS: Dict[str, Tuple[float, float]] = {
     "cpu_pct": (0, 100),
     "mem_pct": (0, 100),
     "swap_pct": (0, 100),
@@ -80,14 +80,14 @@ _THRESHOLD_LIMITS: dict[str, tuple[float, float]] = {
 }
 
 
-def _clean_monitor(raw: Any) -> dict[str, Any]:
+def _clean_monitor(raw: Any) -> Dict[str, Any]:
     """Отбрасывает лишние поля и приводит числовые настройки к допустимым границам.
 
     Клиент может прислать что угодно — сервер обязан защититься сам, чтобы
     опрос метрик не превратился в нагрузку на процессор.
     """
     data = _as_dict(raw)
-    out: dict[str, Any] = {}
+    out: Dict[str, Any] = {}
 
     for key, (low, high) in _MONITOR_LIMITS.items():
         if key not in data:
@@ -99,7 +99,7 @@ def _clean_monitor(raw: Any) -> dict[str, Any]:
         out[key] = int(min(high, max(low, value)))
 
     if isinstance(data.get("thresholds"), dict):
-        thresholds: dict[str, float] = {}
+        thresholds: Dict[str, float] = {}
         for key, (low, high) in _THRESHOLD_LIMITS.items():
             if key not in data["thresholds"]:
                 continue
@@ -120,7 +120,7 @@ def _clean_monitor(raw: Any) -> dict[str, Any]:
     return out
 
 
-def _clean_agents(raw: Any, previous: Any) -> tuple[list[dict[str, Any]], str]:
+def _clean_agents(raw: Any, previous: Any) -> Tuple[List[Dict[str, Any]], str]:
     """Проверяет список агентов мониторинга.
 
     Пустой токен у существующего агента означает «оставить прежний»: интерфейс
@@ -133,8 +133,8 @@ def _clean_agents(raw: Any, previous: Any) -> tuple[list[dict[str, Any]], str]:
         for item in (previous or [])
         if isinstance(item, dict) and item.get("id")
     }
-    out: list[dict[str, Any]] = []
-    used: set[str] = set()
+    out: List[Dict[str, Any]] = []
+    used: Set[str] = set()
     for item in raw[:MAX_AGENTS]:
         if not isinstance(item, dict):
             return [], t("agents.badList")
@@ -154,16 +154,16 @@ def _clean_agents(raw: Any, previous: Any) -> tuple[list[dict[str, Any]], str]:
 
 
 # Границы настроек журнала задач: (минимум, максимум)
-_JOBS_LIMITS: dict[str, tuple[int, int]] = {
+_JOBS_LIMITS: Dict[str, Tuple[int, int]] = {
     "keep": (10, 500),
     "max_active": (1, 64),
 }
 
 
-def _clean_jobs(raw: Any) -> dict[str, int]:
+def _clean_jobs(raw: Any) -> Dict[str, int]:
     """Не даёт испортить лимиты задач через PATCH настроек."""
     data = _as_dict(raw)
-    out: dict[str, int] = {}
+    out: Dict[str, int] = {}
     for key, (low, high) in _JOBS_LIMITS.items():
         if key not in data:
             continue
@@ -208,9 +208,9 @@ def _clean_allowed_host(value: Any) -> str:
     return text
 
 
-def _clean_server(raw: Any) -> dict[str, Any]:
+def _clean_server(raw: Any) -> Dict[str, Any]:
     data = _as_dict(raw)
-    out: dict[str, Any] = {}
+    out: Dict[str, Any] = {}
     if "host" in data:
         host = str(data.get("host") or "").strip()
         if host and len(host) <= 255 and not any(char.isspace() for char in host) \
@@ -232,9 +232,9 @@ def _clean_server(raw: Any) -> dict[str, Any]:
     return out
 
 
-def _clean_ui(raw: Any) -> dict[str, Any]:
+def _clean_ui(raw: Any) -> Dict[str, Any]:
     data = _as_dict(raw)
-    out: dict[str, Any] = {}
+    out: Dict[str, Any] = {}
     if data.get("theme") in UI_THEMES:
         out["theme"] = data["theme"]
     if data.get("density") in UI_DENSITIES:
@@ -246,14 +246,14 @@ def _clean_ui(raw: Any) -> dict[str, Any]:
     return out
 
 
-def _clean_safety(raw: Any) -> dict[str, bool]:
+def _clean_safety(raw: Any) -> Dict[str, bool]:
     data = _as_dict(raw)
     return {key: data[key] is True for key in _SAFETY_KEYS if key in data}
 
 
-def _clean_engines(raw: Any) -> dict[str, str]:
+def _clean_engines(raw: Any) -> Dict[str, str]:
     data = _as_dict(raw)
-    out: dict[str, str] = {}
+    out: Dict[str, str] = {}
     for key in _ENGINE_KEYS:
         if key in data:
             out[key] = str(data.get(key) or "").strip()[:1024]
@@ -263,9 +263,9 @@ def _clean_engines(raw: Any) -> dict[str, str]:
     return out
 
 
-def _clean_audit(raw: Any) -> dict[str, Any]:
+def _clean_audit(raw: Any) -> Dict[str, Any]:
     data = _as_dict(raw)
-    out: dict[str, Any] = {}
+    out: Dict[str, Any] = {}
     if "max_mb" in data:
         try:
             value = float(data["max_mb"])
@@ -281,19 +281,19 @@ def _clean_audit(raw: Any) -> dict[str, Any]:
     return out
 
 
-def _clean_k8s(raw: Any) -> dict[str, str]:
+def _clean_k8s(raw: Any) -> Dict[str, str]:
     data = _as_dict(raw)
     return {key: str(data.get(key) or "").strip()[:253]
             for key in ("context", "namespace") if key in data}
 
 
-def _clean_ansible(raw: Any) -> dict[str, str]:
+def _clean_ansible(raw: Any) -> Dict[str, str]:
     data = _as_dict(raw)
     return {key: str(data.get(key) or "").strip()[:1024]
             for key in ("inventory", "playbooks_dir") if key in data}
 
 
-def _clean_settings_patch(data: Any, runtime) -> tuple[dict[str, Any], str]:
+def _clean_settings_patch(data: Any, runtime) -> Tuple[Dict[str, Any], str]:
     """Единая безопасная очистка PATCH и импорта настроек."""
     body = _as_dict(data)
     patch = {key: value for key, value in body.items() if key in _SETTINGS_SECTIONS}
@@ -351,7 +351,7 @@ def _clean_settings_patch(data: Any, runtime) -> tuple[dict[str, Any], str]:
     return patch, ""
 
 
-def _apply_settings(runtime, patch: dict[str, Any]) -> None:
+def _apply_settings(runtime, patch: Dict[str, Any]) -> None:
     """Применяет настройки, которые не требуют перезапуска процесса."""
     if "ui" in patch:
         set_language(runtime.cfg.get("ui.language", "ru"))
@@ -386,7 +386,7 @@ def _number_setting(value: Any, default: float, low: float, high: float) -> floa
 # --------------------------------------------------------------------------- #
 
 @router.get("/health")
-def health(request: Request) -> dict[str, Any]:
+def health(request: Request) -> Dict[str, Any]:
     runtime = rt(request)
     return {
         "ok": True,
@@ -399,13 +399,13 @@ def health(request: Request) -> dict[str, Any]:
 
 
 @router.get("/state")
-def state(request: Request) -> dict[str, Any]:
+def state(request: Request) -> Dict[str, Any]:
     runtime = rt(request)
     return {"ok": True, "data": runtime.state()}
 
 
 @router.get("/info")
-def info(request: Request, refresh: bool = False) -> dict[str, Any]:
+def info(request: Request, refresh: bool = False) -> Dict[str, Any]:
     from .systeminfo import static_info
 
     runtime = rt(request)
@@ -413,7 +413,7 @@ def info(request: Request, refresh: bool = False) -> dict[str, Any]:
 
 
 @router.get("/audit")
-def audit_log(request: Request, limit: int = Query(200, ge=1, le=2000)) -> dict[str, Any]:
+def audit_log(request: Request, limit: int = Query(200, ge=1, le=2000)) -> Dict[str, Any]:
     rt(request)
     return {"ok": True, "items": read_audit(limit)}
 
@@ -423,14 +423,14 @@ def audit_log(request: Request, limit: int = Query(200, ge=1, le=2000)) -> dict[
 # --------------------------------------------------------------------------- #
 
 @router.get("/metrics/snapshot")
-def metrics_snapshot(request: Request, details: bool = True) -> dict[str, Any]:
+def metrics_snapshot(request: Request, details: bool = True) -> Dict[str, Any]:
     runtime = rt(request)
     return {"ok": True, "data": runtime.collector.snapshot(with_details=details)}
 
 
 @router.get("/metrics/history")
 def metrics_history(request: Request, minutes: int = Query(30, ge=1, le=1440),
-                    series: str = "") -> dict[str, Any]:
+                    series: str = "") -> Dict[str, Any]:
     runtime = rt(request)
     keys = [s.strip() for s in series.split(",") if s.strip()] or None
     return {"ok": True, "data": runtime.collector.history(minutes=minutes, series=keys)}
@@ -438,14 +438,14 @@ def metrics_history(request: Request, minutes: int = Query(30, ge=1, le=1440),
 
 @router.get("/processes")
 def processes(request: Request, sort: str = "cpu", limit: int = Query(50, ge=1, le=500),
-              q: str = "") -> dict[str, Any]:
+              q: str = "") -> Dict[str, Any]:
     runtime = rt(request)
     items = runtime.collector.processes(sort=sort, limit=limit, query=q)
     return {"ok": True, "items": items, "count": len(items)}
 
 
 @router.get("/processes/{pid}")
-def process_detail(request: Request, pid: int) -> dict[str, Any]:
+def process_detail(request: Request, pid: int) -> Dict[str, Any]:
     runtime = rt(request)
     detail = runtime.collector.process_detail(pid)
     if detail is None:
@@ -454,7 +454,7 @@ def process_detail(request: Request, pid: int) -> dict[str, Any]:
 
 
 @router.post("/processes/{pid}/kill")
-def process_kill(request: Request, pid: int, force: bool = False) -> dict[str, Any]:
+def process_kill(request: Request, pid: int, force: bool = False) -> Dict[str, Any]:
     runtime = rt(request)
     result = runtime.collector.kill_process(pid, force=force)
     audit("process.kill", target=str(pid), detail="force" if force else "terminate",
@@ -463,20 +463,20 @@ def process_kill(request: Request, pid: int, force: bool = False) -> dict[str, A
 
 
 @router.get("/connections")
-def connections(request: Request, limit: int = Query(100, ge=1, le=1000)) -> dict[str, Any]:
+def connections(request: Request, limit: int = Query(100, ge=1, le=1000)) -> Dict[str, Any]:
     runtime = rt(request)
     return {"ok": True, "items": runtime.collector.connections(limit=limit),
             "summary": runtime.collector.connection_summary()}
 
 
 @router.get("/alerts")
-def alerts(request: Request) -> dict[str, Any]:
+def alerts(request: Request) -> Dict[str, Any]:
     runtime = rt(request)
     return {"ok": True, "items": runtime.collector.active_alerts()}
 
 
 @router.post("/alerts/{alert_id}/dismiss")
-def dismiss_alert(request: Request, alert_id: str) -> dict[str, Any]:
+def dismiss_alert(request: Request, alert_id: str) -> Dict[str, Any]:
     runtime = rt(request)
     removed = runtime.collector.clear_alert(alert_id)
     audit("alert.dismiss", target=alert_id, ok=removed)
@@ -485,7 +485,7 @@ def dismiss_alert(request: Request, alert_id: str) -> dict[str, Any]:
 
 @router.get("/changes")
 def changes(request: Request, hours: float = Query(24.0, ge=0.1, le=720.0),
-            files: int = Query(150, ge=1, le=500)) -> dict[str, Any]:
+            files: int = Query(150, ge=1, le=500)) -> Dict[str, Any]:
     runtime = rt(request)
     return {"ok": True, "data": collect_changes(runtime.cfg, hours=hours, file_limit=files)}
 
@@ -495,13 +495,13 @@ def changes(request: Request, hours: float = Query(24.0, ge=0.1, le=720.0),
 # --------------------------------------------------------------------------- #
 
 @router.get("/engines")
-def engines(request: Request, refresh: bool = False) -> dict[str, Any]:
+def engines(request: Request, refresh: bool = False) -> Dict[str, Any]:
     runtime = rt(request)
     return {"ok": True, "data": runtime.registry.summary(refresh=refresh)}
 
 
 @router.post("/engines/refresh")
-def engines_refresh(request: Request) -> dict[str, Any]:
+def engines_refresh(request: Request) -> Dict[str, Any]:
     runtime = rt(request)
     summary = runtime.registry.summary(refresh=True)
     audit("engines.refresh", detail="; ".join(
@@ -511,7 +511,7 @@ def engines_refresh(request: Request) -> dict[str, Any]:
 
 @router.get("/containers")
 def containers(request: Request, engine: str = "", all: bool = True,
-               stats: bool = True) -> dict[str, Any]:
+               stats: bool = True) -> Dict[str, Any]:
     runtime = rt(request)
     data = runtime.registry.containers(kind=engine or None, all_containers=all)
     if not stats:
@@ -521,7 +521,7 @@ def containers(request: Request, engine: str = "", all: bool = True,
 
 
 @router.get("/containers/{cid}")
-def container_inspect(request: Request, cid: str, engine: str = "") -> dict[str, Any]:
+def container_inspect(request: Request, cid: str, engine: str = "") -> Dict[str, Any]:
     runtime = rt(request)
     target = runtime.registry.get(engine or None)
     if not target:
@@ -531,7 +531,7 @@ def container_inspect(request: Request, cid: str, engine: str = "") -> dict[str,
 
 @router.get("/containers/{cid}/logs")
 def container_logs(request: Request, cid: str, engine: str = "", tail: int = Query(200, ge=1, le=5000),
-                   timestamps: bool = False) -> dict[str, Any]:
+                   timestamps: bool = False) -> Dict[str, Any]:
     runtime = rt(request)
     target = runtime.registry.get(engine or None)
     if not target:
@@ -541,7 +541,7 @@ def container_logs(request: Request, cid: str, engine: str = "", tail: int = Que
 
 @router.post("/containers/{cid}/{action}")
 def container_action(request: Request, cid: str, action: str, engine: str = "",
-                     body: dict[str, Any] = Body(default={})) -> dict[str, Any]:
+                     body: Dict[str, Any] = Body(default={})) -> Dict[str, Any]:
     runtime = rt(request)
     target = runtime.registry.get(engine or None)
     if not target:
@@ -555,7 +555,7 @@ def container_action(request: Request, cid: str, action: str, engine: str = "",
 
 
 @router.get("/engine/df")
-def engine_df(request: Request, engine: str = "") -> dict[str, Any]:
+def engine_df(request: Request, engine: str = "") -> Dict[str, Any]:
     runtime = rt(request)
     target = runtime.registry.get(engine or None)
     if not target:
@@ -567,7 +567,7 @@ def engine_df(request: Request, engine: str = "") -> dict[str, Any]:
 
 @router.get("/engine/{resource}")
 def engine_resource(request: Request, resource: str, engine: str = "",
-                    limit: int = Query(60, ge=1, le=500)) -> dict[str, Any]:
+                    limit: int = Query(60, ge=1, le=500)) -> Dict[str, Any]:
     runtime = rt(request)
     target = runtime.registry.get(engine or None)
     if not target:
@@ -582,14 +582,14 @@ def engine_resource(request: Request, resource: str, engine: str = "",
 
 
 @router.get("/compose/projects")
-def compose_projects(request: Request, engine: str = "") -> dict[str, Any]:
+def compose_projects(request: Request, engine: str = "") -> Dict[str, Any]:
     runtime = rt(request)
     projects = runtime.registry.projects(kind=engine or None)
     return {"ok": True, "items": projects, "count": len(projects)}
 
 
 @router.get("/compose/ps")
-def compose_ps(request: Request, dir: str, engine: str = "") -> dict[str, Any]:
+def compose_ps(request: Request, dir: str, engine: str = "") -> Dict[str, Any]:
     runtime = rt(request)
     target = runtime.registry.get(engine or None)
     if not target:
@@ -602,7 +602,7 @@ def compose_ps(request: Request, dir: str, engine: str = "") -> dict[str, Any]:
 
 
 @router.post("/compose/{action}")
-def compose_action(request: Request, action: str, body: dict[str, Any] = Body(default={})) -> dict[str, Any]:
+def compose_action(request: Request, action: str, body: Dict[str, Any] = Body(default={})) -> Dict[str, Any]:
     runtime = rt(request)
     data = _as_dict(body)
     directory = data.get("dir", "")
@@ -629,7 +629,7 @@ def compose_action(request: Request, action: str, body: dict[str, Any] = Body(de
 # --------------------------------------------------------------------------- #
 
 @router.get("/k8s/status")
-def k8s_status(request: Request) -> dict[str, Any]:
+def k8s_status(request: Request) -> Dict[str, Any]:
     runtime = rt(request)
     return {"ok": True, "data": {
         **runtime.k8s.available(),
@@ -640,7 +640,7 @@ def k8s_status(request: Request) -> dict[str, Any]:
 
 
 @router.post("/k8s/target")
-def k8s_target(request: Request, body: dict[str, Any] = Body(default={})) -> dict[str, Any]:
+def k8s_target(request: Request, body: Dict[str, Any] = Body(default={})) -> Dict[str, Any]:
     runtime = rt(request)
     data = _as_dict(body)
     result = runtime.k8s.set_target(context=data.get("context", ""), namespace=data.get("namespace", ""))
@@ -651,27 +651,27 @@ def k8s_target(request: Request, body: dict[str, Any] = Body(default={})) -> dic
 
 
 @router.get("/k8s/overview")
-def k8s_overview(request: Request) -> dict[str, Any]:
+def k8s_overview(request: Request) -> Dict[str, Any]:
     runtime = rt(request)
     return _ok(runtime.k8s_cached.get("overview", runtime.k8s.overview, ttl=5))
 
 
 @router.get("/k8s/logs")
 def k8s_logs(request: Request, pod: str, namespace: str = "", container: str = "",
-             tail: int = Query(300, ge=1, le=5000)) -> dict[str, Any]:
+             tail: int = Query(300, ge=1, le=5000)) -> Dict[str, Any]:
     runtime = rt(request)
     return runtime.k8s.logs(pod, namespace=namespace, container=container, tail=tail)
 
 
 @router.get("/k8s/describe")
-def k8s_describe(request: Request, kind: str, name: str, namespace: str = "") -> dict[str, Any]:
+def k8s_describe(request: Request, kind: str, name: str, namespace: str = "") -> Dict[str, Any]:
     runtime = rt(request)
     return runtime.k8s.describe(kind, name, namespace=namespace)
 
 
 @router.get("/k8s/{resource}")
 def k8s_resource(request: Request, resource: str, namespace: str = "",
-                 limit: int = Query(200, ge=1, le=2000)) -> dict[str, Any]:
+                 limit: int = Query(200, ge=1, le=2000)) -> Dict[str, Any]:
     runtime = rt(request)
     handler = {
         "nodes": lambda: runtime.k8s.nodes(),
@@ -692,7 +692,7 @@ def k8s_resource(request: Request, resource: str, namespace: str = "",
 
 
 @router.post("/k8s/{action}")
-def k8s_action(request: Request, action: str, body: dict[str, Any] = Body(default={})) -> dict[str, Any]:
+def k8s_action(request: Request, action: str, body: Dict[str, Any] = Body(default={})) -> Dict[str, Any]:
     runtime = rt(request)
     data = _as_dict(body)
     namespace = data.get("namespace", "")
@@ -733,13 +733,13 @@ def k8s_action(request: Request, action: str, body: dict[str, Any] = Body(defaul
 # --------------------------------------------------------------------------- #
 
 @router.get("/ansible/status")
-def ansible_status(request: Request, refresh: bool = False) -> dict[str, Any]:
+def ansible_status(request: Request, refresh: bool = False) -> Dict[str, Any]:
     runtime = rt(request)
     return {"ok": True, "data": runtime.ansible.status(refresh=refresh)}
 
 
 @router.get("/ansible/inventory")
-def ansible_inventory(request: Request) -> dict[str, Any]:
+def ansible_inventory(request: Request) -> Dict[str, Any]:
     runtime = rt(request)
     tree = runtime.ansible.inventory_tree()
     tree["path"] = str(runtime.ansible.inventory_path())
@@ -751,7 +751,7 @@ def ansible_inventory(request: Request) -> dict[str, Any]:
 
 
 @router.post("/ansible/inventory")
-def ansible_inventory_save(request: Request, body: dict[str, Any] = Body(default={})) -> dict[str, Any]:
+def ansible_inventory_save(request: Request, body: Dict[str, Any] = Body(default={})) -> Dict[str, Any]:
     runtime = rt(request)
     content = str(_as_dict(body).get("content", ""))
     if not content.strip():
@@ -763,14 +763,14 @@ def ansible_inventory_save(request: Request, body: dict[str, Any] = Body(default
 
 
 @router.get("/ansible/playbooks")
-def ansible_playbooks(request: Request) -> dict[str, Any]:
+def ansible_playbooks(request: Request) -> Dict[str, Any]:
     runtime = rt(request)
     items = runtime.ansible.playbooks()
     return {"ok": True, "items": items, "dir": str(runtime.ansible.playbooks_dir())}
 
 
 @router.post("/ansible/run")
-def ansible_run(request: Request, body: dict[str, Any] = Body(default={})) -> dict[str, Any]:
+def ansible_run(request: Request, body: Dict[str, Any] = Body(default={})) -> Dict[str, Any]:
     runtime = rt(request)
     data = _as_dict(body)
     extra_vars = data.get("extra_vars") or {}
@@ -797,7 +797,7 @@ def ansible_run(request: Request, body: dict[str, Any] = Body(default={})) -> di
 
 
 @router.post("/ansible/ping")
-def ansible_ping(request: Request, body: dict[str, Any] = Body(default={})) -> dict[str, Any]:
+def ansible_ping(request: Request, body: Dict[str, Any] = Body(default={})) -> Dict[str, Any]:
     runtime = rt(request)
     data = _as_dict(body)
     result = runtime.ansible.adhoc(runtime.jobs, module=data.get("module", "ping") or "ping",
@@ -808,7 +808,7 @@ def ansible_ping(request: Request, body: dict[str, Any] = Body(default={})) -> d
 
 
 @router.post("/ansible/check")
-def ansible_check(request: Request, body: dict[str, Any] = Body(default={})) -> dict[str, Any]:
+def ansible_check(request: Request, body: Dict[str, Any] = Body(default={})) -> Dict[str, Any]:
     runtime = rt(request)
     return runtime.ansible.syntax_check(_as_dict(body).get("playbook", ""))
 
@@ -818,20 +818,20 @@ def ansible_check(request: Request, body: dict[str, Any] = Body(default={})) -> 
 # --------------------------------------------------------------------------- #
 
 @router.get("/jobs")
-def jobs_list(request: Request, limit: int = Query(40, ge=1, le=200), kind: str = "") -> dict[str, Any]:
+def jobs_list(request: Request, limit: int = Query(40, ge=1, le=200), kind: str = "") -> Dict[str, Any]:
     runtime = rt(request)
     return {"ok": True, "items": runtime.jobs.list(limit=limit, kind=kind or None),
             "running": runtime.jobs.active_count()}
 
 
 @router.get("/jobs/{job_id}")
-def job_detail(request: Request, job_id: str, tail: int = Query(500, ge=1, le=4000)) -> dict[str, Any]:
+def job_detail(request: Request, job_id: str, tail: int = Query(500, ge=1, le=4000)) -> Dict[str, Any]:
     runtime = rt(request)
     return runtime.jobs.log(job_id, tail=tail)
 
 
 @router.post("/jobs/{job_id}/cancel")
-def job_cancel(request: Request, job_id: str) -> dict[str, Any]:
+def job_cancel(request: Request, job_id: str) -> Dict[str, Any]:
     runtime = rt(request)
     result = runtime.jobs.cancel(job_id)
     audit("job.cancel", target=job_id, ok=bool(result.get("ok")), detail=str(result.get("error", "")))
@@ -839,7 +839,7 @@ def job_cancel(request: Request, job_id: str) -> dict[str, Any]:
 
 
 @router.post("/jobs/cancel-all")
-def jobs_cancel_all(request: Request) -> dict[str, Any]:
+def jobs_cancel_all(request: Request) -> Dict[str, Any]:
     runtime = rt(request)
     count = runtime.jobs.cancel_all()
     audit("job.cancel_all", detail=t("api.jobsCancelled", count=count))
@@ -851,13 +851,13 @@ def jobs_cancel_all(request: Request) -> dict[str, Any]:
 # --------------------------------------------------------------------------- #
 
 @router.get("/balancers")
-def balancers_list(request: Request) -> dict[str, Any]:
+def balancers_list(request: Request) -> Dict[str, Any]:
     runtime = rt(request)
     return {"ok": True, "items": runtime.balancers.list_all(), "algorithms": ALGORITHMS}
 
 
 @router.post("/balancers")
-def balancer_create(request: Request, body: dict[str, Any] = Body(default={})) -> dict[str, Any]:
+def balancer_create(request: Request, body: Dict[str, Any] = Body(default={})) -> Dict[str, Any]:
     runtime = rt(request)
     result = runtime.balancers.create(_as_dict(body))
     audit("balancer.create", target=_as_dict(body).get("name", ""), ok=bool(result.get("ok")),
@@ -866,7 +866,7 @@ def balancer_create(request: Request, body: dict[str, Any] = Body(default={})) -
 
 
 @router.patch("/balancers/{name}")
-def balancer_update(request: Request, name: str, body: dict[str, Any] = Body(default={})) -> dict[str, Any]:
+def balancer_update(request: Request, name: str, body: Dict[str, Any] = Body(default={})) -> Dict[str, Any]:
     runtime = rt(request)
     result = runtime.balancers.update(name, _as_dict(body))
     audit("balancer.update", target=name, ok=bool(result.get("ok")), detail=str(result.get("error", "")))
@@ -874,7 +874,7 @@ def balancer_update(request: Request, name: str, body: dict[str, Any] = Body(def
 
 
 @router.delete("/balancers/{name}")
-async def balancer_delete(request: Request, name: str) -> dict[str, Any]:
+async def balancer_delete(request: Request, name: str) -> Dict[str, Any]:
     runtime = rt(request)
     result = await runtime.balancers.delete(name)
     audit("balancer.delete", target=name, ok=bool(result.get("ok")))
@@ -882,7 +882,7 @@ async def balancer_delete(request: Request, name: str) -> dict[str, Any]:
 
 
 @router.post("/balancers/{name}/start")
-async def balancer_start(request: Request, name: str) -> dict[str, Any]:
+async def balancer_start(request: Request, name: str) -> Dict[str, Any]:
     runtime = rt(request)
     result = await runtime.balancers.start(name)
     audit("balancer.start", target=name, ok=bool(result.get("ok")), detail=str(result.get("error", "")))
@@ -890,7 +890,7 @@ async def balancer_start(request: Request, name: str) -> dict[str, Any]:
 
 
 @router.post("/balancers/{name}/stop")
-async def balancer_stop(request: Request, name: str) -> dict[str, Any]:
+async def balancer_stop(request: Request, name: str) -> Dict[str, Any]:
     runtime = rt(request)
     result = await runtime.balancers.stop(name)
     audit("balancer.stop", target=name, ok=bool(result.get("ok")))
@@ -898,7 +898,7 @@ async def balancer_stop(request: Request, name: str) -> dict[str, Any]:
 
 
 @router.get("/balancers/{name}/stats")
-def balancer_stats(request: Request, name: str) -> dict[str, Any]:
+def balancer_stats(request: Request, name: str) -> Dict[str, Any]:
     runtime = rt(request)
     balancer = runtime.balancers.get(name)
     if not balancer:
@@ -907,7 +907,7 @@ def balancer_stats(request: Request, name: str) -> dict[str, Any]:
 
 
 @router.post("/balancers/{name}/probe")
-async def balancer_probe(request: Request, name: str) -> dict[str, Any]:
+async def balancer_probe(request: Request, name: str) -> Dict[str, Any]:
     """Немедленная проверка всех бэкендов (не дожидаясь интервала)."""
     runtime = rt(request)
     balancer = runtime.balancers.get(name)
@@ -921,7 +921,7 @@ async def balancer_probe(request: Request, name: str) -> dict[str, Any]:
 
 
 @router.get("/balancers/{name}/export")
-def balancer_export(request: Request, name: str, format: str = "nginx", write: bool = False) -> dict[str, Any]:
+def balancer_export(request: Request, name: str, format: str = "nginx", write: bool = False) -> Dict[str, Any]:
     runtime = rt(request)
     result = runtime.balancers.export(name, fmt=format, write_file=write)
     audit("balancer.export", target=f"{name} ({format})", ok=bool(result.get("ok")))
@@ -933,14 +933,14 @@ def balancer_export(request: Request, name: str, format: str = "nginx", write: b
 # --------------------------------------------------------------------------- #
 
 @router.get("/catalog/recipes")
-def catalog_recipes(request: Request, q: str = "", category: str = "", kind: str = "") -> dict[str, Any]:
+def catalog_recipes(request: Request, q: str = "", category: str = "", kind: str = "") -> Dict[str, Any]:
     rt(request)
     return {"ok": True, "items": list_recipes(query=q, category=category, kind=kind),
             "categories": categories(), "kinds": kinds(), "stats": catalog_stats()}
 
 
 @router.get("/catalog/recipe/{recipe_id}")
-def catalog_recipe(request: Request, recipe_id: str) -> dict[str, Any]:
+def catalog_recipe(request: Request, recipe_id: str) -> Dict[str, Any]:
     rt(request)
     recipe = get_recipe(recipe_id)
     if not recipe:
@@ -949,7 +949,7 @@ def catalog_recipe(request: Request, recipe_id: str) -> dict[str, Any]:
 
 
 @router.post("/catalog/deploy")
-def catalog_deploy(request: Request, body: dict[str, Any] = Body(default={})) -> dict[str, Any]:
+def catalog_deploy(request: Request, body: Dict[str, Any] = Body(default={})) -> Dict[str, Any]:
     runtime = rt(request)
     data = _as_dict(body)
     result = runtime.catalog.deploy(
@@ -965,7 +965,7 @@ def catalog_deploy(request: Request, body: dict[str, Any] = Body(default={})) ->
 
 
 @router.get("/catalog/deployed")
-def catalog_deployed(request: Request, status: bool = True) -> dict[str, Any]:
+def catalog_deployed(request: Request, status: bool = True) -> Dict[str, Any]:
     runtime = rt(request)
     return {"ok": True, "items": runtime.catalog.deployed(with_status=status),
             "stats": runtime.catalog.stats()}
@@ -973,13 +973,13 @@ def catalog_deployed(request: Request, status: bool = True) -> dict[str, Any]:
 
 @router.get("/catalog/deployed/{slug}/logs")
 def catalog_logs(request: Request, slug: str, tail: int = Query(200, ge=1, le=5000),
-                 service: str = "") -> dict[str, Any]:
+                 service: str = "") -> Dict[str, Any]:
     runtime = rt(request)
     return runtime.catalog.logs(slug, tail=tail, service=service)
 
 
 @router.post("/catalog/deployed/{slug}/{action}")
-def catalog_action(request: Request, slug: str, action: str) -> dict[str, Any]:
+def catalog_action(request: Request, slug: str, action: str) -> Dict[str, Any]:
     runtime = rt(request)
     result = runtime.catalog.action(slug, action)
     audit(f"catalog.{action}", target=slug, ok=bool(result.get("ok")),
@@ -988,7 +988,7 @@ def catalog_action(request: Request, slug: str, action: str) -> dict[str, Any]:
 
 
 @router.post("/catalog/deployed/{slug}/apply")
-def catalog_apply(request: Request, slug: str, dry_run: bool = False) -> dict[str, Any]:
+def catalog_apply(request: Request, slug: str, dry_run: bool = False) -> Dict[str, Any]:
     runtime = rt(request)
     result = runtime.catalog.apply_manifests(slug, dry_run=dry_run)
     audit("catalog.k8s_apply", target=slug, ok=bool(result.get("ok")),
@@ -998,7 +998,7 @@ def catalog_apply(request: Request, slug: str, dry_run: bool = False) -> dict[st
 
 @router.delete("/catalog/deployed/{slug}")
 def catalog_remove(request: Request, slug: str, delete_files: bool = True,
-                   stop_first: bool = True) -> dict[str, Any]:
+                   stop_first: bool = True) -> Dict[str, Any]:
     runtime = rt(request)
     result = runtime.catalog.remove(slug, delete_files=delete_files, stop_first=stop_first)
     audit("catalog.remove", target=slug, ok=bool(result.get("ok")),
@@ -1011,13 +1011,13 @@ def catalog_remove(request: Request, slug: str, delete_files: bool = True,
 # --------------------------------------------------------------------------- #
 
 @router.get("/files/roots")
-def files_roots(request: Request) -> dict[str, Any]:
+def files_roots(request: Request) -> Dict[str, Any]:
     runtime = rt(request)
     return {"ok": True, "items": runtime.workspace.roots(), "home": str(HOME_DIR)}
 
 
 @router.get("/files/tree")
-def files_tree(request: Request, root: str = "", depth: int = Query(3, ge=1, le=8)) -> dict[str, Any]:
+def files_tree(request: Request, root: str = "", depth: int = Query(3, ge=1, le=8)) -> Dict[str, Any]:
     runtime = rt(request)
     try:
         return runtime.workspace.tree(root=root, depth=depth)
@@ -1026,7 +1026,7 @@ def files_tree(request: Request, root: str = "", depth: int = Query(3, ge=1, le=
 
 
 @router.get("/files/read")
-def files_read(request: Request, path: str) -> dict[str, Any]:
+def files_read(request: Request, path: str) -> Dict[str, Any]:
     runtime = rt(request)
     try:
         return runtime.workspace.read(path)
@@ -1035,7 +1035,7 @@ def files_read(request: Request, path: str) -> dict[str, Any]:
 
 
 @router.post("/files/write")
-def files_write(request: Request, body: dict[str, Any] = Body(default={})) -> dict[str, Any]:
+def files_write(request: Request, body: Dict[str, Any] = Body(default={})) -> Dict[str, Any]:
     runtime = rt(request)
     data = _as_dict(body)
     try:
@@ -1049,7 +1049,7 @@ def files_write(request: Request, body: dict[str, Any] = Body(default={})) -> di
 
 
 @router.post("/files/mkdir")
-def files_mkdir(request: Request, body: dict[str, Any] = Body(default={})) -> dict[str, Any]:
+def files_mkdir(request: Request, body: Dict[str, Any] = Body(default={})) -> Dict[str, Any]:
     runtime = rt(request)
     try:
         result = runtime.workspace.mkdir(_as_dict(body).get("path", ""))
@@ -1060,7 +1060,7 @@ def files_mkdir(request: Request, body: dict[str, Any] = Body(default={})) -> di
 
 
 @router.post("/files/rename")
-def files_rename(request: Request, body: dict[str, Any] = Body(default={})) -> dict[str, Any]:
+def files_rename(request: Request, body: Dict[str, Any] = Body(default={})) -> Dict[str, Any]:
     runtime = rt(request)
     data = _as_dict(body)
     try:
@@ -1073,7 +1073,7 @@ def files_rename(request: Request, body: dict[str, Any] = Body(default={})) -> d
 
 
 @router.post("/files/delete")
-def files_delete(request: Request, body: dict[str, Any] = Body(default={})) -> dict[str, Any]:
+def files_delete(request: Request, body: Dict[str, Any] = Body(default={})) -> Dict[str, Any]:
     runtime = rt(request)
     data = _as_dict(body)
     try:
@@ -1086,7 +1086,7 @@ def files_delete(request: Request, body: dict[str, Any] = Body(default={})) -> d
 
 
 @router.post("/files/upload")
-def files_upload(request: Request, body: dict[str, Any] = Body(default={})) -> dict[str, Any]:
+def files_upload(request: Request, body: Dict[str, Any] = Body(default={})) -> Dict[str, Any]:
     runtime = rt(request)
     data = _as_dict(body)
     raw = data.get("content_base64", "")
@@ -1106,7 +1106,7 @@ def files_upload(request: Request, body: dict[str, Any] = Body(default={})) -> d
 
 
 @router.get("/files/search")
-def files_search(request: Request, q: str, root: str = "", limit: int = Query(80, ge=1, le=500)) -> dict[str, Any]:
+def files_search(request: Request, q: str, root: str = "", limit: int = Query(80, ge=1, le=500)) -> Dict[str, Any]:
     runtime = rt(request)
     try:
         return runtime.workspace.search(q, root=root, limit=limit)
@@ -1115,7 +1115,7 @@ def files_search(request: Request, q: str, root: str = "", limit: int = Query(80
 
 
 @router.post("/files/validate")
-def files_validate(request: Request, body: dict[str, Any] = Body(default={})) -> dict[str, Any]:
+def files_validate(request: Request, body: Dict[str, Any] = Body(default={})) -> Dict[str, Any]:
     runtime = rt(request)
     data = _as_dict(body)
     result = validate(data.get("filename", "file.txt"), data.get("content", ""))
@@ -1131,13 +1131,13 @@ def files_validate(request: Request, body: dict[str, Any] = Body(default={})) ->
 
 
 @router.get("/templates")
-def templates(request: Request) -> dict[str, Any]:
+def templates(request: Request) -> Dict[str, Any]:
     rt(request)
     return {"ok": True, "items": list_templates()}
 
 
 @router.get("/templates/{template_id}")
-def template(request: Request, template_id: str) -> dict[str, Any]:
+def template(request: Request, template_id: str) -> Dict[str, Any]:
     rt(request)
     item = get_template(template_id)
     if not item:
@@ -1150,7 +1150,7 @@ def template(request: Request, template_id: str) -> dict[str, Any]:
 # --------------------------------------------------------------------------- #
 
 @router.get("/settings")
-def settings_get(request: Request) -> dict[str, Any]:
+def settings_get(request: Request) -> Dict[str, Any]:
     runtime = rt(request)
     # Ответы этого раздела должны идти на языке, выбранном в настройках.
     set_language(runtime.cfg.get("ui.language", "ru"))
@@ -1162,13 +1162,12 @@ def settings_get(request: Request) -> dict[str, Any]:
             "config": str(runtime.cfg.path),
             "audit": str(HOME_DIR / "logs" / "audit.jsonl"),
         },
-        "auth": runtime.auth.public_state(),
         "workspace": runtime.workspace.usage(),
     }
 
 
 @router.patch("/settings")
-def settings_patch(request: Request, body: dict[str, Any] = Body(default={})) -> dict[str, Any]:
+def settings_patch(request: Request, body: Dict[str, Any] = Body(default={})) -> Dict[str, Any]:
     runtime = rt(request)
     patch, error = _clean_settings_patch(body, runtime)
     if error:
@@ -1179,47 +1178,28 @@ def settings_patch(request: Request, body: dict[str, Any] = Body(default={})) ->
     return _ok(runtime.cfg.export(redact_secrets=True), restart_required=("server" in patch))
 
 
-@router.post("/settings/token/rotate")
-def settings_token_rotate(request: Request) -> dict[str, Any]:
-    runtime = rt(request)
-    token = runtime.auth.rotate()
-    audit("settings.token.rotate", ok=True)
-    return _ok({"token": token, "enabled": True})
-
-
-@router.post("/settings/token/disable")
-def settings_token_disable(request: Request) -> dict[str, Any]:
-    runtime = rt(request)
-    runtime.auth.disable()
-    audit("settings.token.disable", ok=True)
-    return _ok({"enabled": False})
-
-
 @router.get("/settings/export")
-def settings_export(request: Request) -> dict[str, Any]:
+def settings_export(request: Request) -> Dict[str, Any]:
     runtime = rt(request)
     return {"ok": True, "data": runtime.cfg.export(redact_secrets=True)}
 
 
 @router.post("/settings/import")
-def settings_import(request: Request, body: dict[str, Any] = Body(default={})) -> dict[str, Any]:
+def settings_import(request: Request, body: Dict[str, Any] = Body(default={})) -> Dict[str, Any]:
     runtime = rt(request)
     data = _as_dict(body).get("config") or {}
     if not isinstance(data, dict):
         return _fail(t("api.settingsObjectExpected"))
-    # Импорт не должен обходить валидацию PATCH и включать auth в обход
-    # отдельных endpoint'ов ротации токена.
+    # Принимаем только известные секции и прогоняем их через ту же очистку,
+    # что и PATCH: импорт не должен обходить валидацию или добавлять лишние ключи.
     known = {key: value for key, value in data.items() if key in _SETTINGS_SECTIONS}
-    if known:
-        safe, error = _clean_settings_patch(known, runtime)
-        if error:
-            audit("settings.import", target="validation", ok=False, detail=error)
-            return _fail(error)
-    else:
-        safe = {}
-    payload = {key: value for key, value in data.items() if key != "auth"}
-    payload.update(safe)
-    runtime.cfg.update(payload)
+    if not known:
+        return _fail(t("api.nothingToUpdate"))
+    safe, error = _clean_settings_patch(known, runtime)
+    if error:
+        audit("settings.import", target="validation", ok=False, detail=error)
+        return _fail(error)
+    runtime.cfg.update(safe)
     _apply_settings(runtime, safe)
     runtime.balancers.load()
     audit("settings.import", ok=True)
@@ -1227,7 +1207,7 @@ def settings_import(request: Request, body: dict[str, Any] = Body(default={})) -
 
 
 @router.post("/settings/engines/test")
-def settings_engines_test(request: Request) -> dict[str, Any]:
+def settings_engines_test(request: Request) -> Dict[str, Any]:
     runtime = rt(request)
     result = runtime.registry.summary(refresh=True)
     ansible = runtime.ansible.status(refresh=True)
@@ -1247,7 +1227,7 @@ def settings_engines_test(request: Request) -> dict[str, Any]:
 # --------------------------------------------------------------------------- #
 
 @router.get("/paths")
-def paths(request: Request) -> dict[str, Any]:
+def paths(request: Request) -> Dict[str, Any]:
     rt(request)
     return _ok({
         "home": str(HOME_DIR),
@@ -1259,7 +1239,7 @@ def paths(request: Request) -> dict[str, Any]:
 
 
 @router.get("/version")
-def version() -> dict[str, Any]:
+def version() -> Dict[str, Any]:
     return {"ok": True, "version": __version__, "app": "MegaTool"}
 
 

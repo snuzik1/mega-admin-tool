@@ -1,13 +1,22 @@
 #!/usr/bin/env bash
-# Запуск MegaTool (Linux/macOS). Первый запуск сам создаст окружение и поставит
-# только runtime-зависимости; при следующих запусках pip не вызывается.
+# Запуск MegaTool (Linux/macOS). Вся подготовка окружения живёт в start.py:
+# эта обёртка только находит Python и передаёт ему аргументы.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PY="$ROOT/.venv/bin/python"
 
-if [ ! -x "$PY" ] || ! "$PY" -c "import fastapi, uvicorn, websockets, psutil, yaml" >/dev/null 2>&1; then
-  bash "$ROOT/scripts/bootstrap.sh"
+if command -v python3 >/dev/null 2>&1; then
+  PYTHON=python3
+elif command -v python >/dev/null 2>&1; then
+  PYTHON=python
+else
+  echo "Python 3.8+ не найден. Установите python3 и запустите снова." >&2
+  exit 1
 fi
 
-cd "$ROOT"
-exec "$PY" -m megatool --host "${MEGATOOL_HOST:-127.0.0.1}" --port "${MEGATOOL_PORT:-8787}" "$@"
+if [ -n "${MEGATOOL_HOST:-}" ]; then
+  set -- --host "$MEGATOOL_HOST" "$@"
+fi
+if [ -n "${MEGATOOL_PORT:-}" ]; then
+  set -- --port "$MEGATOOL_PORT" "$@"
+fi
+exec "$PYTHON" "$ROOT/start.py" "$@"

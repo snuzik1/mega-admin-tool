@@ -2,10 +2,10 @@
 
 export default {
   bundles: {
-    title: "Наборы конфигов",
+    title: "Наборы файлов",
     subtitle: "Именованные наборы файлов — compose, nginx, Ansible и другие — одним пакетом",
     create: "Создать набор",
-    createTitle: "Новый набор конфигов",
+    createTitle: "Новый набор файлов",
     name: "Имя набора",
     namePlaceholder: "например, dev-server",
     description: "Описание",
@@ -23,9 +23,9 @@ export default {
       size: "Размер",
       modified: "Изменён",
     },
-    noBundles: "Наборов пока нет",
+    noBundles: "Наборов файлов пока нет",
     noBundlesHint: "Создайте набор из шаблона или с нуля — файлы можно добавить позже.",
-    selectBundle: "Набор не выбран",
+    selectBundle: "Набор файлов не выбран",
     selectBundleHint: "Выберите набор в списке слева, чтобы увидеть его файлы.",
     noFiles: "В наборе нет файлов",
     addFile: "Добавить файл",

@@ -1,7 +1,7 @@
 # MegaTool — только runtime-зависимости (минимум для запуска).
 # Всё остальное (docker, kubectl, ansible, ssh) подключается через CLI.
-fastapi>=0.115
-uvicorn>=0.30
-websockets>=12
-psutil>=5.9
-PyYAML>=6.0
+fastapi>=0.115,<0.117
+uvicorn>=0.30,<0.34
+websockets>=12,<14
+psutil>=5.9,<8
+PyYAML>=6.0,<7

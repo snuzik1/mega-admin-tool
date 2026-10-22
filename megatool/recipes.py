@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 import copy
-from typing import Any
+from typing import Any, Dict, List, Optional, Tuple
 
 from .i18n import get_language
 
@@ -33,11 +33,11 @@ CATEGORIES = {
 KINDS = {"compose": "Docker/Podman Compose", "manifest": "Kubernetes-манифесты", "config": "Набор конфигов"}
 
 
-def render(template: str, values: dict[str, str]) -> tuple[str, list[str]]:
+def render(template: str, values: Dict[str, str]) -> Tuple[str, List[str]]:
     """Подставляет {{KEY}}. Возвращает текст и список незаполненных ключей."""
     import re
 
-    missing: list[str] = []
+    missing: List[str] = []
     out = template
     for key, value in values.items():
         out = out.replace("{{" + key + "}}", str(value))
@@ -46,15 +46,15 @@ def render(template: str, values: dict[str, str]) -> tuple[str, list[str]]:
     return out, missing
 
 
-def _p(key: str, label: str, default: str, hint: str = "") -> dict[str, Any]:
+def _p(key: str, label: str, default: str, hint: str = "") -> Dict[str, Any]:
     return {"key": key, "label": label, "default": default, "hint": hint}
 
 
-def _e(key: str, label: str, default: str = "", secret: bool = False, hint: str = "") -> dict[str, Any]:
+def _e(key: str, label: str, default: str = "", secret: bool = False, hint: str = "") -> Dict[str, Any]:
     return {"key": key, "label": label, "default": default, "secret": secret, "hint": hint}
 
 
-RECIPES: list[dict[str, Any]] = [
+RECIPES: List[Dict[str, Any]] = [
     # ------------------------------------------------------------------ #
     #  Веб-серверы
     # ------------------------------------------------------------------ #
@@ -1565,7 +1565,7 @@ sudo systemctl reload ssh
 
 #: Переводы названий, описаний и подписей переменных (язык en).
 #: Значения по умолчанию (default) — данные, их не переводим.
-_LOC_EN: dict[str, dict[str, Any]] = {
+_LOC_EN: Dict[str, Dict[str, Any]] = {
     # Веб-серверы
     "nginx": {
         "name": "Nginx + static site",
@@ -1866,7 +1866,7 @@ _LOC_EN: dict[str, dict[str, Any]] = {
 }
 
 #: Английские ярлыки категорий и видов рецептов.
-_CATEGORIES_EN: dict[str, str] = {
+_CATEGORIES_EN: Dict[str, str] = {
     "web": "Web servers",
     "db": "Databases",
     "cache": "Caches & brokers",
@@ -1877,14 +1877,14 @@ _CATEGORIES_EN: dict[str, str] = {
     "configs": "Configs & templates",
 }
 
-_KINDS_EN: dict[str, str] = {
+_KINDS_EN: Dict[str, str] = {
     "compose": "Docker/Podman Compose",
     "manifest": "Kubernetes manifests",
     "config": "Config bundle",
 }
 
 
-def localize(recipe: dict[str, Any]) -> dict[str, Any]:
+def localize(recipe: Dict[str, Any]) -> Dict[str, Any]:
     """Глубокая копия рецепта с переводом на язык интерфейса (en).
 
     Значения по умолчанию, шаблоны файлов и идентификаторы не переводятся.
@@ -1912,17 +1912,17 @@ def localize(recipe: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
-def categories() -> dict[str, str]:
+def categories() -> Dict[str, str]:
     """Ярлыки категорий каталога на языке интерфейса."""
     return dict(_CATEGORIES_EN if get_language() == "en" else CATEGORIES)
 
 
-def kinds() -> dict[str, str]:
+def kinds() -> Dict[str, str]:
     """Ярлыки видов рецептов на языке интерфейса."""
     return dict(_KINDS_EN if get_language() == "en" else KINDS)
 
 
-def list_recipes(query: str = "", category: str = "", kind: str = "") -> list[dict[str, Any]]:
+def list_recipes(query: str = "", category: str = "", kind: str = "") -> List[Dict[str, Any]]:
     """Список рецептов без тяжёлых полей (шаблоны не отдаём целиком)."""
     query = (query or "").strip().lower()
     category_labels = categories()
@@ -1963,16 +1963,16 @@ def list_recipes(query: str = "", category: str = "", kind: str = "") -> list[di
     return items
 
 
-def get_recipe(recipe_id: str) -> dict[str, Any] | None:
+def get_recipe(recipe_id: str) -> Optional[Dict[str, Any]]:
     for recipe in RECIPES:
         if recipe["id"] == recipe_id:
             return localize(recipe)
     return None
 
 
-def catalog_stats() -> dict[str, Any]:
-    by_category: dict[str, int] = {}
-    by_kind: dict[str, int] = {}
+def catalog_stats() -> Dict[str, Any]:
+    by_category: Dict[str, int] = {}
+    by_kind: Dict[str, int] = {}
     for recipe in RECIPES:
         by_category[recipe["category"]] = by_category.get(recipe["category"], 0) + 1
         by_kind[recipe["kind"]] = by_kind.get(recipe["kind"], 0) + 1

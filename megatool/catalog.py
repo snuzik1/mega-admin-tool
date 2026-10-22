@@ -15,14 +15,14 @@ import re
 import shutil
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, List, Optional
 
 from .config import APPS_DIR, Config
 from .containers import ContainerRegistry
 from .i18n import t
 from .jobs import JobManager
 from .recipes import get_recipe, render
-from .util import human_bytes, iso, rand_password, safe_id, slugify
+from .util import human_bytes, iso, rand_password, safe_id, slugify, write_text
 
 META_NAME = "meta.json"
 MOUNT_RE = re.compile(r"^\s*-\s*\./(?P<dir>[A-Za-z0-9_./-]+):", re.M)
@@ -42,18 +42,18 @@ class Catalog:
         self,
         recipe_id: str,
         name: str = "",
-        values: dict[str, str] | None = None,
+        values: Optional[Dict[str, str]] = None,
         start: bool = False,
         engine: str = "",
-    ) -> dict[str, Any]:
+    ) -> Dict[str, Any]:
         recipe = get_recipe(recipe_id)
         if not recipe:
             return {"ok": False, "error": t("catalog.recipeNotFound", recipe=recipe_id)}
         values = {str(k): str(v) for k, v in (values or {}).items()}
 
         # 1. Собираем итоговые значения: значения по умолчанию + ввод пользователя.
-        final: dict[str, str] = {}
-        secrets_created: list[str] = []
+        final: Dict[str, str] = {}
+        secrets_created: List[str] = []
         for item in recipe.get("vars", []):
             value = values.get(item["key"], item.get("default", ""))
             if not value:
@@ -83,7 +83,7 @@ class Catalog:
         target.mkdir(parents=True, exist_ok=True)
 
         # 3. Рендерим и записываем файлы.
-        written: list[str] = []
+        written: List[str] = []
         for rel_path, content in (recipe.get("files") or {}).items():
             rendered_path, missing_path = render(rel_path, final)
             rendered_text, missing = render(content, final)
@@ -92,7 +92,7 @@ class Catalog:
                                                  fields=missing + missing_path)}
             destination = target / rendered_path
             destination.parent.mkdir(parents=True, exist_ok=True)
-            destination.write_text(rendered_text, encoding="utf-8", newline="")
+            write_text(destination, rendered_text)
             if destination.suffix in (".env", ".conf", ".service") or destination.name.endswith((".env", ".ini")):
                 try:
                     destination.chmod(0o600)
@@ -101,7 +101,7 @@ class Catalog:
             written.append(rendered_path)
 
         # 4. Каталоги для bind-mount'ов (./data и подобные) + .gitignore.
-        created_dirs: list[str] = []
+        created_dirs: List[str] = []
         compose_files = [target / name for name in
                          ("docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml")
                          if (target / name).is_file()]
@@ -159,7 +159,7 @@ class Catalog:
         self.cfg.set("catalog.deployed", deployed)
         self.cfg.save()
 
-        result: dict[str, Any] = {
+        result: Dict[str, Any] = {
             "ok": True,
             "slug": slug,
             "dir": str(target),
@@ -191,9 +191,9 @@ class Catalog:
     # ------------------------------------------------------------------ #
     #  Список и статусы
     # ------------------------------------------------------------------ #
-    def deployed(self, with_status: bool = True) -> list[dict[str, Any]]:
+    def deployed(self, with_status: bool = True) -> List[Dict[str, Any]]:
         deployed = dict(self.cfg.get("catalog.deployed", {}) or {})
-        items: list[dict[str, Any]] = []
+        items: List[Dict[str, Any]] = []
         engine = self.registry.preferred()
         for slug, meta in sorted(deployed.items(), key=lambda kv: -(kv[1].get("created") or 0)):
             entry = dict(meta)
@@ -224,7 +224,7 @@ class Catalog:
             items.append(entry)
         return items
 
-    def app(self, slug: str) -> dict[str, Any] | None:
+    def app(self, slug: str) -> Optional[Dict[str, Any]]:
         deployed = dict(self.cfg.get("catalog.deployed", {}) or {})
         meta = deployed.get(safe_id(slug, ""))
         if not meta:
@@ -233,7 +233,7 @@ class Catalog:
         meta["slug"] = slug
         return meta
 
-    def stats(self) -> dict[str, Any]:
+    def stats(self) -> Dict[str, Any]:
         items = self.deployed(with_status=False)
         return {
             "total": len(items),
@@ -246,7 +246,7 @@ class Catalog:
     # ------------------------------------------------------------------ #
     #  Управление
     # ------------------------------------------------------------------ #
-    def action(self, slug: str, action: str, service: str = "") -> dict[str, Any]:
+    def action(self, slug: str, action: str, service: str = "") -> Dict[str, Any]:
         meta = self.app(slug)
         if not meta:
             return {"ok": False, "error": t("catalog.appNotFound")}
@@ -275,7 +275,7 @@ class Catalog:
         )
         return {"ok": True, "job": job.to_dict()}
 
-    def logs(self, slug: str, tail: int = 200, service: str = "") -> dict[str, Any]:
+    def logs(self, slug: str, tail: int = 200, service: str = "") -> Dict[str, Any]:
         meta = self.app(slug)
         if not meta:
             return {"ok": False, "error": t("catalog.appNotFound"), "text": ""}
@@ -291,7 +291,7 @@ class Catalog:
         return {"ok": bool(text.strip()), "text": "\n".join(text.splitlines()[-max(1, tail):]),
                 "error": "" if result.ok else (result.error or "")}
 
-    def apply_manifests(self, slug: str, dry_run: bool = False) -> dict[str, Any]:
+    def apply_manifests(self, slug: str, dry_run: bool = False) -> Dict[str, Any]:
         """Применяет k8s-манифесты приложения (если доступен kubectl)."""
         meta = self.app(slug)
         if not meta:
@@ -310,7 +310,7 @@ class Catalog:
             results.append({"file": file.name, **k8s.apply_file(file, dry_run=dry_run)})
         return {"ok": all(item.get("ok") for item in results), "results": results, "dir": str(path)}
 
-    def k8s_delete(self, slug: str) -> dict[str, Any]:
+    def k8s_delete(self, slug: str) -> Dict[str, Any]:
         meta = self.app(slug)
         if not meta or meta.get("kind") != "manifest":
             return {"ok": False, "error": t("catalog.appNotFound")}
@@ -321,7 +321,7 @@ class Catalog:
         results = [{"file": file.name, **k8s.delete_file(file)} for file in sorted(path.glob("*.y*ml"))]
         return {"ok": all(item.get("ok") for item in results), "results": results}
 
-    def remove(self, slug: str, delete_files: bool = True, stop_first: bool = True) -> dict[str, Any]:
+    def remove(self, slug: str, delete_files: bool = True, stop_first: bool = True) -> Dict[str, Any]:
         meta = self.app(slug)
         if not meta:
             return {"ok": False, "error": t("catalog.appNotFound")}

@@ -38,15 +38,23 @@ def test_websocket_same_origin_is_allowed(client):
         assert hello["type"] == "hello"
 
 
-def test_auth_cannot_be_changed_through_settings_patch(client):
+def test_removed_auth_section_is_not_accepted_through_settings_patch(client):
     runtime = client.app.state.rt
-    before = runtime.auth.public_state()
     response = client.patch("/api/settings", json={
         "auth": {"enabled": True, "token": "injected"},
     }).json()
     assert response["ok"] is False
-    assert runtime.auth.public_state() == before
+    assert "auth" not in runtime.cfg.export()
     assert runtime.cfg.get("auth.token", "") == ""
+
+
+def test_removed_auth_is_ignored_on_import(client):
+    runtime = client.app.state.rt
+    ignored = client.post("/api/settings/import", json={"config": {
+        "auth": {"enabled": True, "token": "evil"},
+    }}).json()
+    assert ignored["ok"] is False
+    assert "auth" not in runtime.cfg.export()
 
 
 def test_malformed_settings_are_rejected_without_crashing(client):
@@ -78,7 +86,7 @@ def test_allowed_hosts_can_be_configured(client):
         client.patch("/api/settings", json={"server": {"allowed_hosts": before}})
 
 
-def test_import_validates_settings_and_keeps_auth(client):
+def test_import_validates_settings_and_ignores_unknown_sections(client):
     runtime = client.app.state.rt
     before_theme = runtime.cfg.get("ui.theme", "light")
     bad = client.post("/api/settings/import", json={"config": {
@@ -86,8 +94,7 @@ def test_import_validates_settings_and_keeps_auth(client):
         "server": {"port": "not-a-port"},
     }}).json()
     assert bad["ok"] is False
-    assert runtime.auth.enabled is False
-    assert runtime.auth.token == ""
+    assert "auth" not in runtime.cfg.export()
 
     bad_theme = client.post("/api/settings/import", json={"config": {
         "ui": {"theme": "neon"},

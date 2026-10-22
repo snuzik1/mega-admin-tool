@@ -10,7 +10,7 @@ DATA = {
         "badParam": "Invalid value of parameter “{param}” in task {task}",
         "unknownTask": "Unknown task: {task}",
         "noTasks": "No tasks selected",
-        "noSsh": "ssh not found: install OpenSSH or set the path in settings (engines.ssh)",
+        "noSsh": "ssh not found: install OpenSSH or set the path in Settings → Tools",
         "disabled": "Remote execution is disabled in settings (safety.allow_remote_exec)",
         "unknownError": "unknown error",
         "checkFailed": "Could not connect to the server: {error}",

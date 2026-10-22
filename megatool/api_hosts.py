@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Dict
 
 from fastapi import APIRouter, Body, Request
 
@@ -16,7 +16,7 @@ from .i18n import t
 router = APIRouter(prefix="/api")
 
 
-def _ok(data: Any = None, **extra: Any) -> dict[str, Any]:
+def _ok(data: Any = None, **extra: Any) -> Dict[str, Any]:
     payload = {"ok": True}
     if data is not None:
         payload["data"] = data
@@ -24,20 +24,20 @@ def _ok(data: Any = None, **extra: Any) -> dict[str, Any]:
     return payload
 
 
-def _fail(message: str, **extra: Any) -> dict[str, Any]:
+def _fail(message: str, **extra: Any) -> Dict[str, Any]:
     payload = {"ok": False, "error": message}
     payload.update(extra)
     return payload
 
 
 @router.get("/hosts")
-def hosts_get(request: Request) -> dict[str, Any]:
+def hosts_get(request: Request) -> Dict[str, Any]:
     manager = request.app.state.rt.hosts
     return _ok(manager.snapshot())
 
 
 @router.put("/hosts")
-def hosts_put(request: Request, body: dict[str, Any] = Body(default={})) -> dict[str, Any]:
+def hosts_put(request: Request, body: Dict[str, Any] = Body(default={})) -> Dict[str, Any]:
     manager = request.app.state.rt.hosts
     _items, error = manager.save(body.get("hosts"))
     if error:
@@ -49,7 +49,7 @@ def hosts_put(request: Request, body: dict[str, Any] = Body(default={})) -> dict
 
 
 @router.post("/hosts/run")
-def hosts_run(request: Request, body: dict[str, Any] = Body(default={})) -> dict[str, Any]:
+def hosts_run(request: Request, body: Dict[str, Any] = Body(default={})) -> Dict[str, Any]:
     manager = request.app.state.rt.hosts
     host_id = str(body.get("id") or "").strip()
     if host_id:

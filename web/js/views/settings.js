@@ -1,38 +1,13 @@
-/* Настройки MegaTool: сервер и токен доступа, мониторинг и пороги,
-   движки контейнеров, безопасность, интерфейс, данные и каталоги. */
+/* Настройки MegaTool: сервер, мониторинг и пороги, движки контейнеров,
+   безопасность, интерфейс, данные и каталоги. */
 
 import { api } from "../api.js";
 import { setLang, t } from "../i18n.js";
 import {
-  badge, button, card, confirmDialog, empty, field, fmtBytes, fmtNumber, getSetupStatus,
-  guard, h, input, kvRows, modal, mount, notice, openSetupWizard, select, spinner,
+  badge, button, card, confirmDialog, empty, field, fmtBytes, fmtNumber,
+  guard, h, input, kvRows, modal, mount, notice, select, spinner,
   table, tabs, toast, toolbar,
 } from "../ui.js";
-
-/** Копирует текст в буфер обмена (с запасным вариантом). */
-async function copyText(text) {
-  try {
-    if (navigator.clipboard && window.isSecureContext) {
-      await navigator.clipboard.writeText(text);
-      return true;
-    }
-  } catch (error) {
-    /* переходим к запасному способу */
-  }
-  try {
-    const helper = document.createElement("textarea");
-    helper.value = text;
-    helper.style.position = "fixed";
-    helper.style.opacity = "0";
-    document.body.append(helper);
-    helper.select();
-    document.execCommand("copy");
-    helper.remove();
-    return true;
-  } catch (error) {
-    return false;
-  }
-}
 
 /* Списки выбора и подсказки храним с ключами словаря: подписи подставляются
    на этапе отрисовки, чтобы смена языка не оставляла устаревшие строки. */
@@ -75,7 +50,6 @@ export async function render(root, { app = null, args = [] } = {}) {
   const cleanups = [];
   let data = null;       // config
   let paths = {};
-  let auth = {};
   let workspace = {};
   let activeTab = ["server", "monitor", "agents", "engines", "safety", "system", "ui", "data"].includes(args[0]) ? args[0] : "server";
   let engineReport = null;
@@ -89,7 +63,6 @@ export async function render(root, { app = null, args = [] } = {}) {
     if (!result) return false;
     data = result.data || {};
     paths = result.paths || {};
-    auth = result.auth || {};
     workspace = result.workspace || {};
     // Каталоги приложений/конфигов/запусков отдаёт отдельный обработчик
     const extra = await guard(() => api.get("/api/paths"), { quiet: true });
@@ -150,85 +123,11 @@ export async function render(root, { app = null, args = [] } = {}) {
   };
 
   /* ------------------------------------------------------------------ */
-  /*  Вкладка: сервер и доступ                                           */
+  /*  Вкладка: сервер                                                    */
   /* ------------------------------------------------------------------ */
 
   const drawServer = (host) => {
     const server = data.server || {};
-    const tokenBox = h("div");
-    const localBox = h("div", {}, spinner());
-
-    const drawLocal = async () => {
-      const status = await getSetupStatus();
-      if (!status) {
-        mount(localBox, h("p", { class: "small muted" }, t("settings.local.unavailable")));
-        return;
-      }
-      if (!status.users) {
-        if (status.setup_available) {
-          mount(localBox,
-            h("p", { class: "small muted" }, t("settings.local.firstHint")),
-            h("div", { class: "toolbar" },
-              button(t("common.setup.create"), () => openSetupWizard(), { kind: "primary", size: "sm" })));
-        } else {
-          mount(localBox, notice(t("common.setup.unavailable"), "warn"));
-        }
-        return;
-      }
-      mount(localBox,
-        h("div", { class: "row" },
-          status.auth_enabled ? badge(t("access.mode.on"), "ok") : badge(t("access.mode.off"), "muted"),
-          h("span", { class: "small muted" }, t("settings.local.users", { n: status.users }))),
-        h("p", { class: "small muted" }, status.local_only
-          ? t("access.localOnly")
-          : t("settings.local.internalHint")),
-        h("div", { class: "toolbar" },
-          button(t("settings.local.openAccess"), () => { location.hash = "#/access"; },
-            { size: "sm", kind: "ghost" })));
-    };
-    drawLocal();
-
-    const drawToken = () => {
-      mount(tokenBox,
-        h("div", { class: "row" },
-          auth.enabled ? badge(t("settings.token.on"), "ok") : badge(t("settings.token.off"), "muted"),
-          auth.token_set ? h("span", { class: "mono small" }, auth.token_preview) : null),
-        h("p", { class: "small muted" }, auth.note || t("settings.token.note")),
-        h("div", { class: "toolbar" },
-          button(t("settings.token.create"), async () => {
-            const result = await guard(() => api.post("/api/settings/token/rotate"), { quiet: true });
-            if (!result || !result.data) return;
-            auth = { enabled: true, token_set: true, token_preview: `${String(result.data.token).slice(0, 4)}…`, note: auth.note };
-            drawToken();
-            modal({
-              title: t("settings.token.modalTitle"),
-              width: 560,
-              body: h("div", {},
-                notice(t("settings.token.once"), "warn"),
-                h("pre", { class: "mono-block", style: { marginTop: "10px" } }, result.data.token)),
-              actions: [
-                { label: t("common.buttons.copy"), onClick: async () => { await copyText(result.data.token) ? toast(t("settings.token.copied"), "success") : toast(t("settings.token.copyManually"), "warn"); return false; } },
-                { label: t("settings.done") },
-              ],
-            });
-          }, { kind: "primary", size: "sm" }),
-          auth.enabled
-            ? button(t("settings.token.disable"), async () => {
-                const ok = await confirmDialog(t("settings.token.confirm"),
-                  { title: t("settings.token.confirmTitle"), okLabel: t("settings.token.confirmOk") });
-                if (!ok) return;
-                const result = await guard(() => api.post("/api/settings/token/disable"), { quiet: true });
-                if (result) {
-                  auth = { enabled: false, token_set: auth.token_set, token_preview: auth.token_preview, note: auth.note };
-                  drawToken();
-                  toast(t("settings.token.disabled"), "success");
-                }
-              }, { kind: "danger", size: "sm" })
-            : null));
-    };
-
-    drawToken();
-
     mount(host,
       card(t("settings.server.card"), h("div", { class: "col" },
         notice(t("settings.server.notice"), "warn"),
@@ -251,9 +150,6 @@ export async function render(root, { app = null, args = [] } = {}) {
           async (list) => { await save({ server: { allowed_hosts: list } }, { success: t("settings.server.allowedHostsSaved") }); })
       )),
 
-      card(t("settings.token.card"), tokenBox),
-
-      card(t("settings.local.card"), localBox),
 
       card(t("settings.dirs.card"), h("div", {},
         kvRows([
@@ -596,7 +492,7 @@ export async function render(root, { app = null, args = [] } = {}) {
             output.textContent = JSON.stringify(result.data || {}, null, 2);
           }, { kind: "ghost" })),
         importer,
-        notice(t("settings.data.tokenNote"), "warn"),
+        notice(t("settings.data.redactNote"), "warn"),
         output)),
 
       card(t("settings.data.dirsCard"), h("div", {},

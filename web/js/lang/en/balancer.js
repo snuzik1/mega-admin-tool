@@ -4,7 +4,7 @@ export default {
   balancer: {
     title: "Load balancer",
     subtitle: "Built-in HTTP/TCP proxy: algorithms, health checks, metrics and config export for nginx/haproxy",
-    tip: "Tip: port 0 on creation — MegaTool will pick a free port itself. For external traffic use address 0.0.0.0 and enable the token in settings.",
+    tip: "Tip: port 0 on creation — MegaTool will pick a free port itself. For external traffic use address 0.0.0.0 and restrict access with a firewall.",
     probeNow: "Probe now",
     confirmDelete: "Delete balancer \"{name}\"?",
     detailTitle: "Statistics: {name}",

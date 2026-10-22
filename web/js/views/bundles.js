@@ -4,7 +4,7 @@
    файлов и редактор. Переключение наборов и файлов защищено от гонок:
    запоздавший ответ не должен перезаписывать уже выбранный набор. */
 
-import { api, session } from "../api.js";
+import { api } from "../api.js";
 import { getLang, t } from "../i18n.js";
 import {
   badge, button, card, confirmDialog, empty, field, fmtBytes, fmtTime, guard, h, input,
@@ -415,12 +415,10 @@ export async function render(root, { args = [], app = null, desc = "" } = {}) {
   };
 
   const downloadZip = async (bundle) => {
-    // Скачиваем через fetch с заголовком: токен не попадает в адресную строку
-    // и историю браузера. Ссылка создаётся уже на готовый Blob.
+    // Скачиваем через fetch: ссылка создаётся уже на готовый Blob.
     const url = `/api/bundles/${encodeURIComponent(bundle.id)}/export`;
     try {
-      const headers = session.token ? { "X-MegaTool-Token": session.token } : {};
-      const response = await fetch(url, { headers });
+      const response = await fetch(url);
       if (!response.ok) {
         let message = t("common.toast.requestFailed");
         try {

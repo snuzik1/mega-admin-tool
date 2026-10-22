@@ -2,11 +2,11 @@
 
 export default {
   servers: {
-    title: "SSH servers",
-    subtitle: "Inventory and unattended server setup over a key: packages, users, firewall and Docker.",
+    title: "SSH setup",
+    subtitle: "Unattended remote server setup over SSH: checks, packages, users, firewall and Docker.",
     add: "Add server",
     sshMissing: "The ssh client was not found: checks and remote execution are unavailable.",
-    sshMissingHint: "Install OpenSSH or set the ssh path in settings (engines.ssh).",
+    sshMissingHint: "Install OpenSSH or set the ssh path in Settings → Tools.",
     remoteDisabled: "Remote execution is disabled in settings (safety.allow_remote_exec). Checks, task runs and commands are unavailable.",
     empty: {
       title: "No servers yet",

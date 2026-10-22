@@ -12,7 +12,7 @@ import socket
 import sys
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, List
 
 from . import __version__
 from .i18n import t
@@ -23,7 +23,7 @@ try:  # psutil — основная зависимость, но приложе�
 except Exception:  # pragma: no cover - редкий случай
     psutil = None  # type: ignore
 
-_CACHE: dict[str, Any] = {"ts": 0.0, "data": None}
+_CACHE: Dict[str, Any] = {"ts": 0.0, "data": None}
 _CACHE_TTL = 30.0
 
 
@@ -32,10 +32,10 @@ def reset_cache() -> None:
     _CACHE.update({"ts": 0.0, "data": None})
 
 
-def _read_os_release() -> dict[str, str]:
+def _read_os_release() -> Dict[str, str]:
     if not IS_LINUX:
         return {}
-    out: dict[str, str] = {}
+    out: Dict[str, str] = {}
     try:
         for line in Path("/etc/os-release").read_text(encoding="utf-8").splitlines():
             if "=" in line and not line.startswith("#"):
@@ -107,8 +107,8 @@ def is_admin() -> bool:
         return False
 
 
-def _disks() -> list[dict[str, Any]]:
-    items: list[dict[str, Any]] = []
+def _disks() -> List[Dict[str, Any]]:
+    items: List[Dict[str, Any]] = []
     if psutil is not None:
         for part in psutil.disk_partitions(all=False):
             if "cdrom" in (part.opts or "") or part.fstype == "":
@@ -144,7 +144,7 @@ def _disks() -> list[dict[str, Any]]:
     return items
 
 
-def _nics() -> list[dict[str, Any]]:
+def _nics() -> List[Dict[str, Any]]:
     if psutil is None:
         return []
     stats = {}
@@ -152,7 +152,7 @@ def _nics() -> list[dict[str, Any]]:
         stats = psutil.net_if_stats()
     except Exception:
         stats = {}
-    out: list[dict[str, Any]] = []
+    out: List[Dict[str, Any]] = []
     for name, addrs in psutil.net_if_addrs().items():
         if name.lower().startswith(("lo", "loopback")):
             continue
@@ -178,7 +178,7 @@ def _nics() -> list[dict[str, Any]]:
     return out
 
 
-def _users() -> list[dict[str, Any]]:
+def _users() -> List[Dict[str, Any]]:
     if psutil is None:
         return []
     out = []
@@ -196,7 +196,7 @@ def _users() -> list[dict[str, Any]]:
     return out
 
 
-def _temp_sensors() -> list[dict[str, Any]]:
+def _temp_sensors() -> List[Dict[str, Any]]:
     if psutil is None or not hasattr(psutil, "sensors_temperatures"):
         return []
     out = []
@@ -215,7 +215,7 @@ def _temp_sensors() -> list[dict[str, Any]]:
     return out[:12]
 
 
-def static_info(refresh: bool = False) -> dict[str, Any]:
+def static_info(refresh: bool = False) -> Dict[str, Any]:
     """Собирает паспорт машины. Кэш 30 секунд — данные меняются редко."""
     now = time.time()
     if not refresh and _CACHE["data"] and now - _CACHE["ts"] < _CACHE_TTL:
@@ -225,7 +225,7 @@ def static_info(refresh: bool = False) -> dict[str, Any]:
     boot_time = psutil.boot_time() if psutil is not None else None
     mem_total = host_memory().get("total")
 
-    data: dict[str, Any] = {
+    data: Dict[str, Any] = {
         "app": {
             "name": "MegaTool",
             "version": __version__,
@@ -291,7 +291,7 @@ def static_info(refresh: bool = False) -> dict[str, Any]:
     return data
 
 
-def host_memory() -> dict[str, Any]:
+def host_memory() -> Dict[str, Any]:
     """Объём памяти без psutil: ctypes на Windows, /proc/meminfo на Linux."""
     if psutil is not None:
         try:
@@ -337,7 +337,7 @@ def host_memory() -> dict[str, Any]:
         except Exception:
             pass
     if IS_LINUX:
-        info: dict[str, int] = {}
+        info: Dict[str, int] = {}
         try:
             for line in Path("/proc/meminfo").read_text(encoding="utf-8").splitlines():
                 key, _, rest = line.partition(":")

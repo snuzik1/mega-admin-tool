@@ -3,7 +3,7 @@
 export default {
   hosts: {
     title: "Servers",
-    subtitle: "Server inventory: availability, uptime, downtime and disabled time",
+    subtitle: "Inventory and availability monitoring: state, uptime, downtime and disabled time",
     add: "Add server",
     refresh: "Refresh",
     runAll: "Check all",
@@ -20,7 +20,6 @@ export default {
     neverChecked: "checks have not run yet",
     empty: "No servers yet",
     emptyHint: "Add a server and specify a TCP port or HTTP endpoint — MegaTool will monitor its availability in the background.",
-    emptyHintReadonly: "Your account has view-only access. Servers are added by a user with manage permission for this section.",
     saved: "Server list saved",
     saveFailed: "Failed to save the server list",
     ran: "Server “{name}” checked",

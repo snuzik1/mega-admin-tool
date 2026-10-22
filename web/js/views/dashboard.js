@@ -4,7 +4,7 @@ import { api } from "../api.js";
 import { t } from "../i18n.js";
 import { Bars, Gauge, LineChart } from "../charts.js";
 import {
-  badge, bar, bus, button, can, card, confirmDialog, empty, fmtBytes, fmtDuration, fmtNumber, fmtPct,
+  badge, bar, bus, button, card, confirmDialog, empty, fmtBytes, fmtDuration, fmtNumber, fmtPct,
   guard, h, input, jobModal, kvRows, modal, mount, notice, poller, stateBadge, table, toast, toolbar,
 } from "../ui.js";
 
@@ -19,11 +19,6 @@ const RANGES = [
 export async function render(root, { args = [], desc = "" } = {}) {
   const cleanups = [];
   const buffer = { ts: [], series: {}, loaded: false, range: 30 };
-  const manageDashboard = can("dashboard", true);
-  const manageSettings = can("settings", true);
-  const canHosts = can("hosts", false);
-  const canChecks = can("checks", false);
-  const canJobs = can("jobs", false);
 
   let snapshot = null;
   try {
@@ -113,7 +108,11 @@ export async function render(root, { args = [], desc = "" } = {}) {
   const alertsHost = h("div");
   const alertsCard = card(t("dashboard.card.alerts"), alertsHost, {
     id: "alerts",
-    extra: h("span", { class: "muted small" }, t("dashboard.alertsHint")),
+    extra: h("button", {
+      type: "button",
+      class: "link-btn",
+      onclick: () => (location.hash = "#/settings/monitor"),
+    }, t("dashboard.alertsHint")),
   });
   const renderAlerts = (items) => {
     mount(alertsHost, items.length
@@ -124,10 +123,10 @@ export async function render(root, { args = [], desc = "" } = {}) {
               h("div", { class: "alert-title" }, alert.title),
               h("div", { class: "alert-detail" }, alert.detail || ""),
               h("div", { class: "muted small" }, [alert.source, alert.since ? t("dashboard.since", { since: alert.since }) : ""].filter(Boolean).join(" • "))),
-            manageDashboard ? button(t("dashboard.hideAlert"), async () => {
+            button(t("dashboard.hideAlert"), async () => {
               await guard(() => api.post(`/api/alerts/${encodeURIComponent(alert.id)}/dismiss`));
               renderAlerts(items.filter((item) => item !== alert));
-            }, { size: "sm", kind: "ghost" }) : null)))
+            }, { size: "sm", kind: "ghost" }))))
       : empty(t("dashboard.noAlerts"), { mark: "✓" }));
   };
   renderAlerts(initialAlerts);
@@ -164,7 +163,7 @@ export async function render(root, { args = [], desc = "" } = {}) {
       mount(agentsHost, empty(t("dashboard.agents.empty"), {
         mark: "◉",
         hint: t("dashboard.agents.emptyHint"),
-        extra: manageSettings ? button(t("nav.settings.title"), () => (location.hash = "#/settings/agents"), { size: "sm", kind: "ghost" }) : null,
+        extra: button(t("nav.settings.title"), () => (location.hash = "#/settings/agents"), { size: "sm", kind: "ghost" }),
       }));
       return;
     }
@@ -360,7 +359,7 @@ export async function render(root, { args = [], desc = "" } = {}) {
       body,
       width: 720,
       actions: [
-        ...(manageDashboard ? [{
+        {
           label: t("dashboard.killTerm"), kind: "danger",
           onClick: async (close) => {
             if (!(await confirmDialog(t("dashboard.confirmKill", { pid, name: detail.name })))) return;
@@ -375,7 +374,7 @@ export async function render(root, { args = [], desc = "" } = {}) {
             const result = await guard(() => api.post(`/api/processes/${pid}/kill`, {}, { force: true }), { success: t("dashboard.killed") });
             if (result && result.ok) close();
           },
-        }] : []),
+        },
         { label: t("common.buttons.close") },
       ],
     });
@@ -507,8 +506,8 @@ export async function render(root, { args = [], desc = "" } = {}) {
     await Promise.all([refreshProcesses(), refreshConnections()]);
   }));
   cleanups.push(poller(20000, refreshAgents));
-  if (canHosts) cleanups.push(poller(10000, refreshHosts));
-  if (canChecks) cleanups.push(poller(15000, refreshChecks));
+  cleanups.push(poller(10000, refreshHosts));
+  cleanups.push(poller(15000, refreshChecks));
   cleanups.push(poller(60000, async () => {
     const fresh = await guard(() => api.get("/api/info"), { quiet: true });
     if (fresh && fresh.data) Object.assign(info, fresh.data);
@@ -531,16 +530,16 @@ export async function render(root, { args = [], desc = "" } = {}) {
       h("div", {}, h("h1", { class: "view-title" }, t("dashboard.title")),
         h("div", { class: "view-sub" }, `${host.hostname || ""} • ${host.os_pretty || ""} • ${t("dashboard.pollInterval", { ms: fmtNumber((snapshot.data.state || {}).interval_ms || 2000, 0) })}`)),
       h("div", { class: "toolbar" },
-        canJobs ? button(t("dashboard.openJobs"), () => (location.hash = "#/jobs"), { kind: "ghost" }) : null,
-        manageSettings ? button(t("nav.settings.title"), () => (location.hash = "#/settings"), { kind: "ghost" }) : null)),
+        button(t("dashboard.openJobs"), () => (location.hash = "#/jobs"), { kind: "ghost" }),
+        button(t("nav.settings.title"), () => (location.hash = "#/settings"), { kind: "ghost" }))),
     alertsCard,
     gaugeCard,
     chartsCard,
     h("div", { class: "grid cards-2" }, disksCard, nicsCard),
     h("div", { class: "grid cards-2" }, processesCard, connectionsCard),
     agentsCard,
-    canHosts ? hostsCard : null,
-    canChecks ? checksCard : null,
+    hostsCard,
+    checksCard,
     h("div", { class: "grid cards-2" }, infoCard, card(t("dashboard.card.help"), h("div", { class: "small" },
       h("p", {}, t("dashboard.help.stream")),
       h("p", {}, t("dashboard.help.thresholds")),

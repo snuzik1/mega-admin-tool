@@ -34,7 +34,7 @@ export default {
     status: {
       notFound: "kubectl не найден",
       install: "Установка kubectl: {hint}",
-      pathHint: "Либо укажите путь к kubectl в настройках (engines.kubectl) — виджет «Движки и утилиты».",
+      pathHint: "Либо укажите путь к kubectl в разделе «Настройки → Инструменты».",
       recheck: "Проверить снова",
     },
     context: {
@@ -186,7 +186,7 @@ export default {
       title: "Применить манифест",
       pathPlaceholder: "путь внутри рабочей папки, например configs/deploy.yaml",
       pathLabel: "Путь к файлу (относительно рабочей папки)",
-      pathHint: "Файлы лежат в ~/.megatool/configs — их можно создать в разделе «Конфигурации»",
+      pathHint: "Файлы лежат в ~/.megatool/configs — их можно создать в разделе «Файлы и конфиги»",
       dryRun: "Пробный запуск (--dry-run=client)",
       deleteFile: "Удалить из файла",
       clearButton: "Очистить вывод",

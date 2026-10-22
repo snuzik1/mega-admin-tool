@@ -17,13 +17,14 @@ import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from .config import APPS_DIR, CONFIGS_DIR, HOME_DIR, Config
 from .i18n import t
 from .util import (
     CmdResult,
     human_bytes,
+    is_within,
     iso,
     json_any,
     json_lines,
@@ -46,7 +47,7 @@ _MEM_RE = re.compile(r"([\d.]+)\s*([KMGTP]?i?B)")
 #  Разбор строк вида "12.3MiB / 1.5GiB", "0.15%", "0.0.0.0:8080->80/tcp"
 # --------------------------------------------------------------------------- #
 
-def _get(obj: dict[str, Any], *names: str, default: Any = None) -> Any:
+def _get(obj: Dict[str, Any], *names: str, default: Any = None) -> Any:
     """Регистронезависимый доступ к ключу (docker и podman называют поля по-разному)."""
     if not isinstance(obj, dict):
         return default
@@ -66,14 +67,14 @@ def parse_percent(value: Any) -> float:
     return round(float(match.group(1)), 1) if match else 0.0
 
 
-def parse_bytes_pair(value: Any) -> tuple[float, float]:
+def parse_bytes_pair(value: Any) -> Tuple[float, float]:
     """«12.3MiB / 1.5GiB» -> (12.3 МБ, 1.5 ГБ)."""
     if not value:
         return (0.0, 0.0)
     if isinstance(value, (int, float)):
         return (float(value), 0.0)
     parts = [p.strip() for p in str(value).split("/")] if "/" in str(value) else [str(value)]
-    out: list[float] = []
+    out: List[float] = []
     for part in parts[:2]:
         match = _MEM_RE.search(part)
         if not match:
@@ -88,7 +89,7 @@ def parse_bytes_pair(value: Any) -> tuple[float, float]:
     return (out[0], out[1])
 
 
-def parse_ports(value: Any) -> list[str]:
+def parse_ports(value: Any) -> List[str]:
     if not value:
         return []
     if isinstance(value, list):
@@ -109,7 +110,7 @@ def parse_ports(value: Any) -> list[str]:
     return [p.strip() for p in str(value).split(",") if p.strip()]
 
 
-def parse_created(running_for: str | None, created_at: str | None, created: Any = None) -> float | None:
+def parse_created(running_for: Optional[str], created_at: Optional[str], created: Any = None) -> Optional[float]:
     """Пытается получить timestamp создания из "RunningFor"/"Created". """
     if isinstance(created, (int, float)) and created > 1_000_000_000:
         return float(created)
@@ -128,7 +129,7 @@ def parse_created(running_for: str | None, created_at: str | None, created: Any 
     return None
 
 
-def human_uptime(text: str | None) -> str:
+def human_uptime(text: Optional[str]) -> str:
     return str(text or "").replace("About ", "").replace(" ago", "")
 
 
@@ -139,7 +140,7 @@ def human_uptime(text: str | None) -> str:
 @dataclass
 class EngineInfo:
     kind: str
-    binary: str | None = None
+    binary: Optional[str] = None
     version: str = ""
     server_version: str = ""
     available: bool = False
@@ -148,7 +149,7 @@ class EngineInfo:
     compose: str = ""
     checked_at: float = 0.0
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> Dict[str, Any]:
         return {
             "kind": self.kind,
             "binary": self.binary,
@@ -166,13 +167,13 @@ class ContainerEngine:
     def __init__(self, kind: str, cfg: Config) -> None:
         self.kind = kind
         self.cfg = cfg
-        self._info: EngineInfo | None = None
+        self._info: Optional[EngineInfo] = None
         self._lock = threading.RLock()
-        self._compose_cmd: list[str] | None = None
+        self._compose_cmd: Optional[List[str]] = None
 
     # ------------------------------------------------------------------ #
     @property
-    def binary(self) -> str | None:
+    def binary(self) -> Optional[str]:
         return which(self.kind, self.cfg.get(f"engines.{self.kind}", "") or None)
 
     def info(self, refresh: bool = False) -> EngineInfo:
@@ -202,7 +203,7 @@ class ContainerEngine:
             self._info = info
             return info
 
-    def require(self) -> tuple[bool, str]:
+    def require(self) -> Tuple[bool, str]:
         info = self.info()
         if not info.available:
             return False, t("containers.unavailable", engine=self.kind,
@@ -214,7 +215,7 @@ class ContainerEngine:
     # ------------------------------------------------------------------ #
     #  Контейнеры
     # ------------------------------------------------------------------ #
-    def list(self, all_containers: bool = True) -> tuple[list[dict[str, Any]], str]:
+    def list(self, all_containers: bool = True) -> Tuple[List[Dict[str, Any]], str]:
         info = self.info()
         if not info.available or not info.binary:
             return [], info.error or t("containers.engineDown", engine=self.kind)
@@ -231,10 +232,10 @@ class ContainerEngine:
             raw = json_lines(res.out)
         return [self._normalize_container(item) for item in raw], ""
 
-    def _normalize_container(self, item: dict[str, Any]) -> dict[str, Any]:
+    def _normalize_container(self, item: Dict[str, Any]) -> Dict[str, Any]:
         labels = _get(item, "Labels", default={}) or {}
         if isinstance(labels, str):
-            parsed: dict[str, str] = {}
+            parsed: Dict[str, str] = {}
             for pair in labels.split(","):
                 key, _, value = pair.partition("=")
                 if key.strip():
@@ -277,7 +278,7 @@ class ContainerEngine:
             "exit_code": item.get("ExitCode"),
         }
 
-    def stats(self, all_containers: bool = True) -> tuple[dict[str, dict[str, Any]], str]:
+    def stats(self, all_containers: bool = True) -> Tuple[Dict[str, Dict[str, Any]], str]:
         info = self.info()
         if not info.available or not info.binary:
             return {}, info.error or t("containers.engineDown", engine=self.kind)
@@ -292,7 +293,7 @@ class ContainerEngine:
             raw = data if isinstance(data, list) else json_lines(res.out)
         else:
             raw = json_lines(res.out)
-        out: dict[str, dict[str, Any]] = {}
+        out: Dict[str, Dict[str, Any]] = {}
         for item in raw:
             cid = str(_get(item, "Container", "ID", "Id", default=""))
             used, limit = parse_bytes_pair(_get(item, "MemUsage", "MemUsageBytes", "mem_usage", default=""))
@@ -314,7 +315,7 @@ class ContainerEngine:
                 out[name] = entry
         return out, ""
 
-    def inspect(self, cid: str) -> dict[str, Any]:
+    def inspect(self, cid: str) -> Dict[str, Any]:
         ok, err = self.require()
         cid = safe_id(cid)
         if not ok or not cid:
@@ -325,7 +326,7 @@ class ContainerEngine:
         data = json_any(res.out)
         return {"ok": True, "data": data}
 
-    def logs(self, cid: str, tail: int = 200, timestamps: bool = False) -> dict[str, Any]:
+    def logs(self, cid: str, tail: int = 200, timestamps: bool = False) -> Dict[str, Any]:
         ok, err = self.require()
         cid = safe_id(cid)
         if not ok or not cid:
@@ -339,7 +340,7 @@ class ContainerEngine:
         return {"ok": res.ok or bool(text.strip()), "text": text, "lines": text.splitlines()[-5000:],
                 "error": "" if res.ok else (res.error or "") }
 
-    def action(self, cid: str, op: str, new_name: str = "") -> dict[str, Any]:
+    def action(self, cid: str, op: str, new_name: str = "") -> Dict[str, Any]:
         ok, err = self.require()
         cid = safe_id(cid)
         if op not in ACTIONS:
@@ -371,7 +372,7 @@ class ContainerEngine:
     # ------------------------------------------------------------------ #
     #  Ресурсы движка
     # ------------------------------------------------------------------ #
-    def df(self) -> dict[str, Any]:
+    def df(self) -> Dict[str, Any]:
         info = self.info()
         if not info.available or not info.binary:
             return {"ok": False, "error": info.error or t("containers.engineUnavailable"), "items": []}
@@ -393,7 +394,7 @@ class ContainerEngine:
             })
         return {"ok": True, "items": normalized, "error": "" if res.ok else (res.error or "")}
 
-    def images(self, limit: int = 60) -> list[dict[str, Any]]:
+    def images(self, limit: int = 60) -> List[Dict[str, Any]]:
         info = self.info()
         if not info.available or not info.binary:
             return []
@@ -410,7 +411,7 @@ class ContainerEngine:
             })
         return out[:limit]
 
-    def volumes(self, limit: int = 60) -> list[dict[str, Any]]:
+    def volumes(self, limit: int = 60) -> List[Dict[str, Any]]:
         info = self.info()
         if not info.available or not info.binary:
             return []
@@ -425,7 +426,7 @@ class ContainerEngine:
             })
         return sorted(out, key=lambda v: v["name"])[:limit]
 
-    def networks(self, limit: int = 60) -> list[dict[str, Any]]:
+    def networks(self, limit: int = 60) -> List[Dict[str, Any]]:
         info = self.info()
         if not info.available or not info.binary:
             return []
@@ -444,7 +445,7 @@ class ContainerEngine:
     # ------------------------------------------------------------------ #
     #  Compose
     # ------------------------------------------------------------------ #
-    def compose_argv(self) -> list[str] | None:
+    def compose_argv(self) -> Optional[List[str]]:
         """Определяет доступную команду compose для этого движка."""
         if self._compose_cmd is not None:
             return self._compose_cmd
@@ -465,13 +466,13 @@ class ContainerEngine:
                 return candidate
         return None
 
-    def compose_files_in(self, directory: Path) -> list[Path]:
+    def compose_files_in(self, directory: Path) -> List[Path]:
         return [directory / name for name in COMPOSE_FILENAMES if (directory / name).is_file()]
 
-    def find_projects(self, roots: Iterable[Path] | None = None) -> list[dict[str, Any]]:
+    def find_projects(self, roots: Optional[Iterable[Path]] = None) -> List[Dict[str, Any]]:
         """Находит compose-проекты в рабочем каталоге приложения."""
         roots = list(roots or [APPS_DIR, CONFIGS_DIR])
-        projects: list[dict[str, Any]] = []
+        projects: List[Dict[str, Any]] = []
         for root in roots:
             if not root.is_dir():
                 continue
@@ -487,11 +488,11 @@ class ContainerEngine:
                 })
         return sorted(projects, key=lambda p: p["name"])
 
-    def _compose_guard(self, files: list[Path], cwd: Path) -> str | None:
+    def _compose_guard(self, files: List[Path], cwd: Path) -> Optional[str]:
         allowed_roots = [HOME_DIR.resolve(), CONFIGS_DIR.resolve(), APPS_DIR.resolve()]
         for path in [*files, cwd]:
             resolved = Path(path).resolve()
-            if not any(resolved.is_relative_to(root) for root in allowed_roots):
+            if not any(is_within(resolved, root) for root in allowed_roots):
                 return t("containers.pathOutside", path=resolved)
         for path in files:
             if path.name not in COMPOSE_FILENAMES and path.suffix not in (".yml", ".yaml"):
@@ -499,8 +500,8 @@ class ContainerEngine:
         return None
 
     def compose_command(self, directory: Path, op: str, service: str = "",
-                        files: list[Path] | None = None,
-                        extra_args: list[str] | None = None) -> tuple[list[str] | None, str]:
+                        files: Optional[List[Path]] = None,
+                        extra_args: Optional[List[str]] = None) -> Tuple[Optional[List[str]], str]:
         """Собирает argv для compose-операции (используется и для фоновых задач)."""
         argv = self.compose_argv()
         if not argv:
@@ -532,14 +533,14 @@ class ContainerEngine:
                     if isinstance(a, str) and (not a.startswith("-") or a in allowed_flags)]
         return cmd, ""
 
-    def compose(self, directory: Path, op: str, service: str = "", files: list[Path] | None = None,
-                extra_args: list[str] | None = None) -> CmdResult:
+    def compose(self, directory: Path, op: str, service: str = "", files: Optional[List[Path]] = None,
+                extra_args: Optional[List[str]] = None) -> CmdResult:
         cmd, error = self.compose_command(directory, op, service=service, files=files, extra_args=extra_args)
         if not cmd:
             return CmdResult(False, 2, err=error, error=error)
         return run(cmd, timeout=300, cwd=directory)
 
-    def compose_ps(self, directory: Path, files: list[Path] | None = None) -> dict[str, Any]:
+    def compose_ps(self, directory: Path, files: Optional[List[Path]] = None) -> Dict[str, Any]:
         files = files or self.compose_files_in(directory)
         argv = self.compose_argv()
         if not argv:
@@ -584,13 +585,13 @@ class ContainerEngine:
 class ContainerRegistry:
     def __init__(self, cfg: Config) -> None:
         self.cfg = cfg
-        self.engines: dict[str, ContainerEngine] = {
+        self.engines: Dict[str, ContainerEngine] = {
             "docker": ContainerEngine("docker", cfg),
             "podman": ContainerEngine("podman", cfg),
         }
 
     # ------------------------------------------------------------------ #
-    def summary(self, refresh: bool = False) -> dict[str, Any]:
+    def summary(self, refresh: bool = False) -> Dict[str, Any]:
         preferred = self.cfg.get("engines.preferred_container_engine", "auto") or "auto"
         data = {name: engine.info(refresh=refresh).to_dict() for name, engine in self.engines.items()}
         active = self.preferred()
@@ -601,7 +602,7 @@ class ContainerRegistry:
             "available_any": any(item["available"] and item["daemon_ok"] for item in data.values()),
         }
 
-    def preferred(self) -> ContainerEngine | None:
+    def preferred(self) -> Optional[ContainerEngine]:
         setting = self.cfg.get("engines.preferred_container_engine", "auto") or "auto"
         if setting in self.engines:
             info = self.engines[setting].info()
@@ -612,17 +613,17 @@ class ContainerRegistry:
                 return engine
         return None
 
-    def get(self, kind: str | None) -> ContainerEngine | None:
+    def get(self, kind: Optional[str]) -> Optional[ContainerEngine]:
         if kind and kind in self.engines:
             return self.engines[kind]
         return self.preferred()
 
     # ------------------------------------------------------------------ #
-    def containers(self, kind: str | None = None, all_containers: bool = True) -> dict[str, Any]:
+    def containers(self, kind: Optional[str] = None, all_containers: bool = True) -> Dict[str, Any]:
         engine = self.get(kind)
-        items: list[dict[str, Any]] = []
-        stats: dict[str, dict[str, Any]] = {}
-        errors: list[str] = []
+        items: List[Dict[str, Any]] = []
+        stats: Dict[str, Dict[str, Any]] = {}
+        errors: List[str] = []
         engines = [engine] if engine else [e for e in self.engines.values() if e.info().available]
         for item_engine in [e for e in engines if e]:
             listed, err = item_engine.list(all_containers=all_containers)
@@ -658,7 +659,7 @@ class ContainerRegistry:
         totals["mem_sum_human"] = human_bytes(totals["mem_sum"])
         return {"items": items, "totals": totals, "errors": errors, "engine": engine.kind if engine else None}
 
-    def projects(self, kind: str | None = None) -> list[dict[str, Any]]:
+    def projects(self, kind: Optional[str] = None) -> List[Dict[str, Any]]:
         engine = self.get(kind)
         if not engine:
             return []
@@ -673,9 +674,9 @@ class ContainerRegistry:
         return projects
 
     # ------------------------------------------------------------------ #
-    def container_alerts(self) -> list[dict[str, Any]]:
+    def container_alerts(self) -> List[Dict[str, Any]]:
         """Провайдер алертов для коллектора: проблемы контейнеров."""
-        alerts: list[dict[str, Any]] = []
+        alerts: List[Dict[str, Any]] = []
         engine = self.preferred()
         if not engine:
             return alerts
