@@ -241,7 +241,6 @@ def test_live_server_http_and_websocket():
             async with websockets.connect(
                 f"ws://127.0.0.1:{port}/api/ws/metrics",
                 open_timeout=5,
-                proxy=None,
             ) as socket_conn:
                 message = await asyncio.wait_for(socket_conn.recv(), timeout=8)
                 return json.loads(message)
