@@ -10,7 +10,7 @@ import {
 } from "../ui.js";
 
 const INSTALL_HINT =
-  "winget install Kubernetes.kubectl   •   curl -LO \"https://dl.k8s.io/release/$(curl -sL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl\"   •   sudo snap install kubectl --classic";
+  "curl -LO \"https://dl.k8s.io/release/$(curl -sL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl\"   •   sudo snap install kubectl --classic";
 
 /* Фазы подов и состояний узлов: значение из API — ключ словаря. */
 const PHASE_KEYS = {

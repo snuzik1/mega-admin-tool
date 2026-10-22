@@ -11,11 +11,5 @@ indent_size = 4
 [*.{js,css,html,json,yml,yaml,toml,md}]
 indent_size = 2
 
-[*.ps1]
-end_of_line = crlf
-
-[*.cmd]
-end_of_line = crlf
-
 [Makefile]
 indent_style = tab

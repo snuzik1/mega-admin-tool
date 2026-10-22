@@ -6,7 +6,7 @@
 
 ## Требования
 
-- Python 3.8+ и Git.
+- Linux и Python 3.8+.
 - Docker, Kubernetes, Ansible, nginx и SSH-клиент **не обязательны** для
   разработки и тестов.
 - Node.js и сборщик не используются: интерфейс — обычные ES-модули в `web/js`.
@@ -16,41 +16,26 @@
 Пользовательский запуск одной командой:
 
 ```bash
-python start.py
+python3 start.py
 ```
 
 Разработческое окружение:
 
-```powershell
-# Windows
-powershell -ExecutionPolicy Bypass -File scripts\bootstrap.ps1 -Dev
-```
-
 ```bash
-# Linux / macOS
 bash scripts/bootstrap.sh --dev
 ```
 
 Либо вручную:
 
 ```bash
-python -m venv .venv
-# Windows: .venv\Scripts\activate
-# Linux:   source .venv/bin/activate
+python3 -m venv .venv
+source .venv/bin/activate
 python -m pip install -r requirements-dev.txt
 ```
 
 ## Обязательные проверки перед PR
 
-```powershell
-# Windows
-.venv\Scripts\python.exe -m pytest -q
-.venv\Scripts\python.exe -m ruff check megatool tests
-.venv\Scripts\python.exe scripts\jscheck.py
-```
-
 ```bash
-# Linux / macOS
 .venv/bin/python -m pytest -q
 .venv/bin/python -m ruff check megatool tests
 .venv/bin/python scripts/jscheck.py
@@ -59,12 +44,11 @@ python -m pip install -r requirements-dev.txt
 Все три проверки должны проходить. Если менялись только документы, достаточно
 проверить ссылки и орфографию, но CI всё равно запустит полный набор.
 
-Отдельно можно прогнать симуляцию запуска на 10 профилях Windows, Linux и
-macOS (она также входит в pytest):
+Отдельно можно прогнать симуляцию запуска на 10 Linux-профилях (она также
+входит в pytest):
 
-```powershell
-.venv\Scripts\python.exe scripts\startup_matrix.py  # Windows
-.venv/bin/python scripts/startup_matrix.py          # Linux/macOS
+```bash
+.venv/bin/python scripts/startup_matrix.py
 ```
 
 ## Правила кода

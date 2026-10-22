@@ -36,15 +36,12 @@ htmlcov/
 # Node.js не используется, но пусть не попадёт случайно
 node_modules/
 
-# редакторы и ОС
+# редакторы
 .idea/
 .vscode/
 *.code-workspace
 *.swp
 *~
-.DS_Store
-Thumbs.db
-desktop.ini
 
 # временные файлы
 *.log

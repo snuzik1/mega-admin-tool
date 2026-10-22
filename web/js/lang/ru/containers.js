@@ -26,8 +26,6 @@ export default {
     noEngine: {
       title: "Контейнерный движок не найден",
       hint: "MegaTool вызывает docker/podman через CLI. Установите движок или укажите путь к бинарнику в настройках.",
-      winget: "Установить через winget",
-      wingetHint: "Команда: winget install Docker.DockerDesktop (Windows) или apt install docker.io (Linux)",
     },
     action: {
       pause: "Пауза",

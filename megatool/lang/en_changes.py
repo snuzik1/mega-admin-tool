@@ -14,12 +14,6 @@ DATA = {
         "sourceUndefined": "not determined",
         "sourceUnavailable": "unavailable",
         "aptOperation": "apt operation",
-        "installedOn": "as of {time}",
-        "installedBy": "installed by: {user}",
         "failedLogin": "failed login: {user}",
-        "session": "session: {info}",
-        "sourceHotfix": "Get-HotFix (Windows updates)",
-        "sourceServices": "Get-Service (auto-start, not running)",
-        "sourceWinEvents": "Windows Event Log (level: critical/error)",
     },
 }

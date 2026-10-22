@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import os
-
 import pytest
 from starlette.websockets import WebSocketDisconnect
 
@@ -121,7 +119,6 @@ def test_new_themes_are_accepted(client, theme):
         client.patch("/api/settings", json={"ui": {"theme": before}})
 
 
-@pytest.mark.skipif(os.name == "nt", reason="POSIX file modes are not available on Windows")
 def test_config_file_is_private(client, home):
     from megatool.config import CONFIG_PATH
 

@@ -180,7 +180,7 @@ def test_path_traversal_is_rejected(bundle_client, bundle_home):
         "/etc/passwd",
         "~/secret.txt",
         "dir/~/secret.txt",
-        "C:/Windows/win.ini",
+        "/root/.ssh/id_rsa",
         "",
     ]
     for bad in bad_paths:

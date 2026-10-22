@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Запуск MegaTool (Linux/macOS). Вся подготовка окружения живёт в start.py:
+# Запуск MegaTool (Linux). Вся подготовка окружения живёт в start.py:
 # эта обёртка только находит Python и передаёт ему аргументы.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

@@ -14,12 +14,6 @@ DATA = {
         "sourceUndefined": "не определён",
         "sourceUnavailable": "недоступен",
         "aptOperation": "операция apt",
-        "installedOn": "по состоянию на {time}",
-        "installedBy": "установил: {user}",
         "failedLogin": "неудачный вход: {user}",
-        "session": "сессия: {info}",
-        "sourceHotfix": "Get-HotFix (обновления Windows)",
-        "sourceServices": "Get-Service (автозапуск, не запущены)",
-        "sourceWinEvents": "Журнал событий Windows (Уровень: критично/ошибка)",
     },
 }

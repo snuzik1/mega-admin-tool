@@ -30,13 +30,13 @@ for arg in "$@"; do
 done
 
 if ! command -v systemctl >/dev/null 2>&1; then
-  echo "systemd не найден. Запускайте MegaTool вручную: ./start.sh" >&2
+  echo "systemd не найден. Запускайте MegaTool вручную: bash run.sh" >&2
   exit 1
 fi
 
 if [ ! -x "$PYTHON" ]; then
   echo "Виртуальное окружение не найдено: $PYTHON" >&2
-  echo "Сначала запустите ./start.sh — он создаст .venv и поставит зависимости." >&2
+  echo "Сначала запустите bash run.sh — он создаст .venv и поставит зависимости." >&2
   exit 1
 fi
 

@@ -131,15 +131,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
 
 def default_watch_paths() -> List[str]:
     """Каталоги, которые имеет смысл отслеживать на изменения (по умолчанию)."""
-    if os.name == "nt":
-        windir = os.environ.get("SystemRoot", r"C:\Windows")
-        candidates = [
-            os.environ.get("ProgramData", r"C:\ProgramData"),
-            os.path.join(windir, "System32", "drivers", "etc"),
-            str(HOME_DIR),
-        ]
-    else:
-        candidates = ["/etc", "/etc/nginx", "/etc/systemd/system", "/opt", str(HOME_DIR)]
+    candidates = ["/etc", "/etc/nginx", "/etc/systemd/system", "/opt", str(HOME_DIR)]
     return [p for p in candidates if Path(p).is_dir()]
 
 
@@ -174,8 +166,8 @@ class Config:
 
     def save(self) -> None:
         with self._lock:
-            # В конфиге могут лежать токены агентов: на POSIX закрываем файл
-            # от чтения другими пользователями (на Windows режим не действует).
+            # В конфиге могут лежать токены агентов: закрываем файл от чтения
+            # другими пользователями.
             write_json(self.path, self._data, mode=0o600)
 
     @property
@@ -186,12 +178,11 @@ class Config:
     def _ensure_dirs(self) -> None:
         for d in (HOME_DIR, APPS_DIR, CONFIGS_DIR, RUNS_DIR, LOGS_DIR, BUNDLES_DIR):
             ensure_dir(d)
-        if os.name != "nt":
-            for d in (HOME_DIR, LOGS_DIR):
-                try:
-                    os.chmod(d, 0o700)
-                except OSError:
-                    pass
+        for d in (HOME_DIR, LOGS_DIR):
+            try:
+                os.chmod(d, 0o700)
+            except OSError:
+                pass
 
     # ------------------------------------------------------------------ #
     def get(self, dotted: str, default: Any = None) -> Any:

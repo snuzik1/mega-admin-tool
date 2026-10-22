@@ -25,9 +25,7 @@ except Exception:  # pragma: no cover
     psutil = None  # type: ignore
 
 from .i18n import t
-from .util import IS_WINDOWS, ensure_dir, human_duration, iso, read_json, safe_id, write_json
-
-CREATE_NO_WINDOW = 0x08000000 if IS_WINDOWS else 0
+from .util import ensure_dir, human_duration, iso, read_json, safe_id, write_json
 
 
 class JobLimitError(RuntimeError):
@@ -245,8 +243,7 @@ class JobManager:
                 encoding="utf-8",
                 errors="replace",
                 bufsize=1,
-                creationflags=CREATE_NO_WINDOW,
-                start_new_session=not IS_WINDOWS,
+                start_new_session=True,
             )
         except FileNotFoundError:
             job.status = "failed"
@@ -353,10 +350,7 @@ class JobManager:
             except Exception:
                 pass
         try:
-            if IS_WINDOWS:
-                proc.terminate()
-            else:
-                os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
         except Exception:
             try:
                 proc.kill()

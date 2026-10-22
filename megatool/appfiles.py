@@ -28,11 +28,11 @@ except ImportError:  # pragma: no cover
 
 from .config import APPS_DIR, CONFIGS_DIR, HOME_DIR, Config
 from .i18n import t
-from .util import IS_WINDOWS, human_bytes, is_within, iso, write_text
+from .util import human_bytes, is_within, iso, write_text
 
 TEXT_EXTENSIONS = {
     ".yml", ".yaml", ".json", ".ini", ".cfg", ".conf", ".env", ".txt", ".md", ".log",
-    ".service", ".sh", ".ps1", ".sql", ".tf", ".toml", ".xml", ".html", ".css", ".js",
+    ".service", ".sh", ".sql", ".tf", ".toml", ".xml", ".html", ".css", ".js",
     ".py", ".tpl", ".j2", ".example", ".properties", ".rules", ".dockerignore", ".gitignore",
 }
 MAX_READ = 512 * 1024

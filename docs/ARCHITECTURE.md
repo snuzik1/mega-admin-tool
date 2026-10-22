@@ -221,8 +221,7 @@ python3 megatool-agent.py --host 0.0.0.0 --port 8791 --token СЕКРЕТ
   температурой; `/health` доступен без токена;
 * токен проверяется через `Authorization: Bearer`, `X-MegaTool-Agent-Token`
   или `?token=`; без токена агент по умолчанию слушает только loopback;
-* CPU считается по разнице `/proc/stat` (Linux) или `GetSystemTimes` (Windows),
-  память — `/proc/meminfo` / `GlobalMemoryStatusEx`; кэш метрик — 1 с.
+* CPU считается по разнице `/proc/stat`, память — `/proc/meminfo`; кэш метрик — 1 с.
 
 `megatool/agents.py` опрашивает настроенных агентов параллельно (до 8 потоков,
 таймаут 3 с) и кэширует ответы на 5 с; недоступная машина не задерживает
@@ -232,18 +231,11 @@ python3 megatool-agent.py --host 0.0.0.0 --port 8791 --token СЕКРЕТ
 
 ## Автозапуск
 
-* **Windows** — `scripts/install-autostart.ps1` создаёт задачу планировщика
-  `MegaTool` при входе (или `-AtStartup`), запускает её и настраивает
-  автоперезапуск; `pythonw.exe` скрывает консоль. Удаление —
-  `scripts/uninstall-autostart.ps1`.
-* **Linux** — `scripts/install-autostart.sh` пишет пользовательскую службу
-  `~/.config/systemd/user/megatool.service`, включает её и (по флагу
-  `--linger`) разрешает запуск без входа. `KillSignal=SIGINT` даёт uvicorn
-  корректно завершиться. Удаление — `scripts/uninstall-autostart.sh`.
-
-Оба варианта используют уже созданный `.venv` и не изменяют настройки
-приложения; порт берётся из `config.json` (или задаётся аргументом Windows-
-скрипта).
+`scripts/install-autostart.sh` пишет пользовательскую службу
+`~/.config/systemd/user/megatool.service`, включает её и (по флагу
+`--linger`) разрешает запуск без входа. `KillSignal=SIGINT` даёт uvicorn
+корректно завершиться. Удаление — `scripts/uninstall-autostart.sh`.
+Скрипт использует уже созданный `.venv` и не изменяет настройки приложения.
 
 ## Безопасность
 
@@ -259,7 +251,7 @@ python3 megatool-agent.py --host 0.0.0.0 --port 8791 --token СЕКРЕТ
   `Permissions-Policy` и COOP/CORP;
 * тело запроса ограничено 25 МБ (413);
 * `PATCH /api/settings` и импорт принимают только известные секции; устаревший
-  `auth` вырезается, а `config.json` на POSIX создаётся с правами `0600`;
+  `auth` вырезается, а `config.json` создаётся с правами `0600`;
 * все изменяющие действия — в `logs/audit.jsonl` (кто/что/когда/результат),
   журнал ротируется;
 * песочница `Workspace.resolve` не выпускает за `MEGATOOL_HOME` и `extra_roots`;
@@ -290,7 +282,6 @@ tests/
   test_integration.py      # полный набор конфигов, агент, лимит задач, живой uvicorn + WS
 ```
 
-Прогон: `pytest -q` (99 тестов; 98 проходят, один POSIX-only пропускается на
-Windows), `scripts/jscheck.py` (синтаксис ES-модулей), `ruff check .`. Всё это
-выполняется в CI (`.github/workflows/ci.yml`) на Windows и Linux, Python
-3.8/3.12/3.14.
+Прогон: `pytest -q` (116 тестов), `scripts/jscheck.py` (синтаксис ES-модулей),
+`ruff check .`. Всё это выполняется в CI (`.github/workflows/ci.yml`) на Ubuntu,
+Python 3.8/3.12/3.14.

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""MegaTool — запуск одной командой на Windows, Linux и macOS.
+"""MegaTool — запуск одной командой на Linux.
 
-    python start.py [параметры megatool]
+    python3 start.py [параметры megatool]
 
 При первом запуске создаёт .venv и ставит пять runtime-зависимостей,
 при следующих — сразу запускает приложение (pip не вызывается).
@@ -33,12 +33,8 @@ CHECK = "import fastapi, uvicorn, websockets, psutil, yaml"
 FAST_ARGS = ("-h", "--help", "--version")
 
 
-def venv_python(venv: Path, windows: Optional[bool] = None) -> Path:
-    """Путь к Python внутри venv: Scripts/python.exe или bin/python."""
-    if windows is None:
-        windows = os.name == "nt"
-    if windows:
-        return venv / "Scripts" / "python.exe"
+def venv_python(venv: Path) -> Path:
+    """Путь к Python внутри виртуального окружения Linux."""
     return venv / "bin" / "python"
 
 
@@ -64,12 +60,12 @@ def venv_version_ok(py: Path, cwd: Path = ROOT) -> bool:
     return py.is_file() and run([str(py), "-c", check], cwd, quiet=True) == 0
 
 
-def _setup_hint(windows: bool) -> str:
-    if windows:
-        return "Установите Python 3.8+ с python.org и включите Add python.exe to PATH."
-    if sys.platform == "darwin":
-        return "Установите Python 3.8+ (например, brew install python) и повторите запуск."
-    return "Linux: установите модуль venv (Debian/Ubuntu: sudo apt install python3-venv)."
+def _setup_hint() -> str:
+    return (
+        "Linux: установите Python 3.8+ и модуль venv "
+        "(Debian/Ubuntu: sudo apt install python3 python3-venv; "
+        "Fedora: sudo dnf install python3; Arch: sudo pacman -S python)."
+    )
 
 
 def main(
@@ -77,12 +73,13 @@ def main(
     *,
     root: Path = ROOT,
     venv: Path = VENV,
-    windows: Optional[bool] = None,
 ) -> int:
     """Готовит окружение при необходимости и запускает `python -m megatool`."""
     args = list(sys.argv[1:] if argv is None else argv)
-    win = os.name == "nt" if windows is None else windows
-    py = venv_python(venv, win)
+    if sys.platform != "linux":
+        print("MegaTool поддерживает только Linux.")
+        return 1
+    py = venv_python(venv)
 
     if sys.version_info < MIN_VERSION:
         print("MegaTool требует Python 3.8 или новее.")
@@ -97,7 +94,7 @@ def main(
         code = run([sys.executable, "-m", "venv", str(venv)], cwd=root)
         if code != 0:
             print("[setup] не удалось создать venv. Проверьте Python 3.8+ и модуль venv.")
-            print("[setup] " + _setup_hint(win))
+            print("[setup] " + _setup_hint())
             return code
     elif not venv_version_ok(py, root):
         print(f"[setup] окружение {venv} создано старой версией Python.")

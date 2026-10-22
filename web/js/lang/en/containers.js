@@ -26,8 +26,6 @@ export default {
     noEngine: {
       title: "Container engine not found",
       hint: "MegaTool calls docker/podman via the CLI. Install an engine or set the path to the binary in settings.",
-      winget: "Install via winget",
-      wingetHint: "Command: winget install Docker.DockerDesktop (Windows) or apt install docker.io (Linux)",
     },
     action: {
       pause: "Pause",

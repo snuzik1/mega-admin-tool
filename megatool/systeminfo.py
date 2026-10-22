@@ -1,7 +1,7 @@
 """Базовая информация о сервере/рабочей станции (меняется редко, кэшируется).
 
 Используется psutil, если он установлен; там где это возможно есть запасные
-варианты через stdlib (winreg, /proc, /etc/os-release).
+варианты через stdlib (/proc, /etc/os-release).
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ from typing import Any, Dict, List
 
 from . import __version__
 from .i18n import t
-from .util import IS_LINUX, IS_WINDOWS, human_bytes, human_duration, iso, run
+from .util import human_bytes, human_duration, iso, run
 
 try:  # psutil — основная зависимость, но приложение должно жить и без него
     import psutil  # type: ignore
@@ -33,8 +33,6 @@ def reset_cache() -> None:
 
 
 def _read_os_release() -> Dict[str, str]:
-    if not IS_LINUX:
-        return {}
     out: Dict[str, str] = {}
     try:
         for line in Path("/etc/os-release").read_text(encoding="utf-8").splitlines():
@@ -47,41 +45,24 @@ def _read_os_release() -> Dict[str, str]:
 
 
 def cpu_model() -> str:
-    """Название процессора: реестр Windows, /proc/cpuinfo Linux, затем platform."""
-    if IS_WINDOWS:
-        try:
-            import winreg  # type: ignore
-
-            with winreg.OpenKey(
-                winreg.HKEY_LOCAL_MACHINE,
-                r"HARDWARE\DESCRIPTION\System\CentralProcessor\0",
-            ) as key:
-                return str(winreg.QueryValueEx(key, "ProcessorNameString")[0]).strip()
-        except Exception:
-            pass
-    if IS_LINUX:
-        try:
-            for line in Path("/proc/cpuinfo").read_text(encoding="utf-8").splitlines():
-                if line.lower().startswith("model name"):
-                    return line.split(":", 1)[1].strip()
-        except OSError:
-            pass
+    """Название процессора из /proc/cpuinfo, затем platform."""
+    try:
+        for line in Path("/proc/cpuinfo").read_text(encoding="utf-8").splitlines():
+            if line.lower().startswith("model name"):
+                return line.split(":", 1)[1].strip()
+    except OSError:
+        pass
     text = platform.processor() or platform.machine()
     return text.strip() or t("systeminfo.unknown")
 
 
 def virtualization() -> str:
     """Тип виртуализации: kvm, vmware, wsl, физическая машина и т.п."""
-    if IS_LINUX:
-        res = run(["systemd-detect-virt"], timeout=5)
-        if res.ok and res.out.strip():
-            return res.out.strip()
-        if Path("/proc/1/cgroup").is_file() and "docker" in _safe_text("/proc/1/cgroup"):
-            return "docker"
-    if IS_WINDOWS:
-        # Основная проверка для Windows — модель компьютера в Win32_ComputerSystem,
-        # но ради скорости ограничиваемся свободным ответом без внешних вызовов.
-        return "host"
+    res = run(["systemd-detect-virt"], timeout=5)
+    if res.ok and res.out.strip():
+        return res.out.strip()
+    if Path("/proc/1/cgroup").is_file() and "docker" in _safe_text("/proc/1/cgroup"):
+        return "docker"
     return t("systeminfo.noData")
 
 
@@ -94,17 +75,7 @@ def _safe_text(path: str, limit: int = 4096) -> str:
 
 
 def is_admin() -> bool:
-    if IS_WINDOWS:
-        try:
-            import ctypes
-
-            return bool(ctypes.windll.shell32.IsUserAnAdmin())  # type: ignore[attr-defined]
-        except Exception:
-            return False
-    try:
-        return os.geteuid() == 0  # type: ignore[attr-defined]
-    except AttributeError:
-        return False
+    return os.geteuid() == 0
 
 
 def _disks() -> List[Dict[str, Any]]:
@@ -128,7 +99,7 @@ def _disks() -> List[Dict[str, Any]]:
             })
         return items
     # запасной вариант без psutil
-    mounts = ["/"] if not IS_WINDOWS else [os.environ.get("SystemDrive", "C:") + "\\"]
+    mounts = ["/"]
     for mount in mounts:
         try:
             import shutil as _shutil
@@ -172,7 +143,7 @@ def _nics() -> List[Dict[str, Any]]:
                 info["ipv4"].append(addr.address)
             elif fam_name == "AF_INET6":
                 info["ipv6"].append(addr.address.split("%")[0])
-            elif fam_name in ("AF_LINK", "AF_PACKET") or "MAC" in str(family):
+            elif fam_name == "AF_PACKET":
                 info["mac"] = addr.address
         out.append(info)
     return out
@@ -268,9 +239,7 @@ def static_info(refresh: bool = False) -> Dict[str, Any]:
         "temperatures": _temp_sensors(),
         "capabilities": {
             "psutil": psutil is not None,
-            "systemd": Path("/run/systemd/system").is_dir() if IS_LINUX else False,
-            "windows": IS_WINDOWS,
-            "linux": IS_LINUX,
+            "systemd": Path("/run/systemd/system").is_dir(),
         },
     }
 
@@ -292,7 +261,7 @@ def static_info(refresh: bool = False) -> Dict[str, Any]:
 
 
 def host_memory() -> Dict[str, Any]:
-    """Объём памяти без psutil: ctypes на Windows, /proc/meminfo на Linux."""
+    """Объём памяти: psutil, затем /proc/meminfo."""
     if psutil is not None:
         try:
             vm = psutil.virtual_memory()
@@ -305,53 +274,21 @@ def host_memory() -> Dict[str, Any]:
             }
         except Exception:
             pass
-    if IS_WINDOWS:
-        try:
-            import ctypes
-
-            class MEMORYSTATUSEX(ctypes.Structure):
-                _fields_ = [
-                    ("dwLength", ctypes.c_ulong),
-                    ("dwMemoryLoad", ctypes.c_ulong),
-                    ("ullTotalPhys", ctypes.c_ulonglong),
-                    ("ullAvailPhys", ctypes.c_ulonglong),
-                    ("ullTotalPageFile", ctypes.c_ulonglong),
-                    ("ullAvailPageFile", ctypes.c_ulonglong),
-                    ("ullTotalVirtual", ctypes.c_ulonglong),
-                    ("ullAvailVirtual", ctypes.c_ulonglong),
-                    ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
-                ]
-
-            stat = MEMORYSTATUSEX()
-            stat.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
-            ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat))  # type: ignore[attr-defined]
-            total = int(stat.ullTotalPhys)
-            avail = int(stat.ullAvailPhys)
-            return {
-                "total": total, "used": total - avail, "available": avail,
-                "percent": round((total - avail) / total * 100, 1) if total else 0.0,
-                "swap_total": int(stat.ullTotalPageFile),
-                "swap_used": int(stat.ullTotalPageFile - stat.ullAvailPageFile),
-                "swap_percent": 0.0,
-            }
-        except Exception:
-            pass
-    if IS_LINUX:
-        info: Dict[str, int] = {}
-        try:
-            for line in Path("/proc/meminfo").read_text(encoding="utf-8").splitlines():
-                key, _, rest = line.partition(":")
-                info[key.strip()] = int(rest.strip().split()[0]) * 1024
-            total = info.get("MemTotal", 0)
-            avail = info.get("MemAvailable", 0)
-            return {
-                "total": total, "used": total - avail, "available": avail,
-                "percent": round((total - avail) / total * 100, 1) if total else 0.0,
-                "swap_total": info.get("SwapTotal", 0),
-                "swap_used": info.get("SwapTotal", 0) - info.get("SwapFree", 0),
-                "swap_percent": 0.0,
-            }
-        except OSError:
-            pass
+    info: Dict[str, int] = {}
+    try:
+        for line in Path("/proc/meminfo").read_text(encoding="utf-8").splitlines():
+            key, _, rest = line.partition(":")
+            info[key.strip()] = int(rest.strip().split()[0]) * 1024
+        total = info.get("MemTotal", 0)
+        avail = info.get("MemAvailable", 0)
+        return {
+            "total": total, "used": total - avail, "available": avail,
+            "percent": round((total - avail) / total * 100, 1) if total else 0.0,
+            "swap_total": info.get("SwapTotal", 0),
+            "swap_used": info.get("SwapTotal", 0) - info.get("SwapFree", 0),
+            "swap_percent": 0.0,
+        }
+    except OSError:
+        pass
     return {"total": 0, "used": 0, "available": 0, "percent": 0.0,
             "swap_total": 0, "swap_used": 0, "swap_percent": 0.0}

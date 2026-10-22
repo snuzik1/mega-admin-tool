@@ -117,7 +117,7 @@ def parse_created(running_for: Optional[str], created_at: Optional[str], created
     for text in (created_at, running_for):
         if not text:
             continue
-        cleaned = re.sub(r"\s*windows?\s*.*", "", str(text), flags=re.I).strip()
+        cleaned = str(text).strip()
         try:
             from datetime import datetime, timedelta
 

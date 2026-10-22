@@ -7,8 +7,7 @@ MegaTool.
 
 - `LICENSE` (MIT), `README.md`, `SECURITY.md`, `CONTRIBUTING.md`;
 - `.gitignore`, `.gitattributes`, `.editorconfig`;
-- GitHub Actions: `.github/workflows/ci.yml` (Ubuntu/Windows/macOS; Python 3.8/3.12/3.14,
-  на macOS — 3.12/3.14);
+- GitHub Actions: `.github/workflows/ci.yml` (Ubuntu, Python 3.8/3.12/3.14);
 - шаблоны Issue и Pull Request, Dependabot;
 - `docs/GUIDE.md` и `docs/ARCHITECTURE.md`;
 - `CHANGELOG.md` для первого релиза.
@@ -18,7 +17,7 @@ MegaTool.
 - `.venv/`, `.pytest_cache/`, `.ruff_cache/`, `__pycache__/`;
 - `~/.megatool/`, `config.json`, журналы и дампы;
 - токены, пароли, SSH-ключи и файлы `.env`;
-- личные абсолютные пути вида `C:\Users\...`.
+- личные абсолютные пути вида `/home/...`.
 
 ## 2. Репозиторий и проверка
 
@@ -35,11 +34,11 @@ git status --short
 
 Перед публикацией выполните:
 
-```powershell
-.venv\Scripts\python.exe -m pytest -q
-.venv\Scripts\python.exe -m ruff check .
-.venv\Scripts\python.exe scripts\jscheck.py
-.venv\Scripts\python.exe scripts\startup_matrix.py
+```bash
+.venv/bin/python -m pytest -q
+.venv/bin/python -m ruff check .
+.venv/bin/python scripts/jscheck.py
+.venv/bin/python scripts/startup_matrix.py
 ```
 
 ## 3. Опубликуйте main

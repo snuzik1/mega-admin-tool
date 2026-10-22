@@ -7,7 +7,7 @@ import {
   poller, select, stateBadge, table, tabs, toast, toolbar,
 } from "../ui.js";
 
-const INSTALL_HINT = "pip install ansible   •   sudo apt install ansible   •   winget install RedHat.Ansible";
+const INSTALL_HINT = "pip install ansible   •   sudo apt install ansible";
 
 export async function render(root) {
   const cleanups = [];

@@ -1,7 +1,7 @@
 """«Что изменилось на сервере»: файлы, пакеты, входы, сервисы, ошибки в журналах.
 
 Каждый источник опрашивается осторожно и независимо: недоступность одного
-(нет systemd, нет прав, Windows вместо Linux) не ломает остальные.
+(нет systemd, нет прав, нет журнала) не ломает остальные.
 """
 
 from __future__ import annotations
@@ -15,13 +15,12 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from .config import AUDIT_LOG, Config, default_watch_paths
 from .i18n import t
-from .util import IS_LINUX, IS_WINDOWS, append_jsonl, iso, read_jsonl, run
+from .util import append_jsonl, iso, read_jsonl, run
 
 #: Каталоги, которые никогда не сканируем (шум и огромный объём).
 SKIP_DIRS = {
     "proc", "sys", "dev", "run", "node_modules", ".git", "__pycache__", ".venv",
-    "venv", "site-packages", "Cache", "cache", "tmp", "Temp", "Windows", "winsxs",
-    "System Volume Information", "$Recycle.Bin",
+    "venv", "site-packages", "Cache", "cache", "tmp",
 }
 
 _CACHE: Dict[str, Any] = {"ts": 0.0, "key": "", "data": None}
@@ -125,13 +124,7 @@ _DPKG_RE = re.compile(r"^(?P<ts>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) (?P<action>
 
 def _packages_section(hours: float) -> Dict[str, Any]:
     cutoff = time.time() - hours * 3600
-    items: List[Dict[str, Any]] = []
-    source = ""
-
-    if IS_LINUX:
-        source, items = _packages_linux(cutoff)
-    elif IS_WINDOWS:
-        source, items = _packages_windows()
+    source, items = _packages_linux(cutoff)
 
     items.sort(key=lambda i: i.get("ts", 0), reverse=True)
     return {
@@ -226,38 +219,6 @@ def _packages_linux(cutoff: float) -> Tuple[str, List[Dict[str, Any]]]:
     return "", items
 
 
-def _packages_windows() -> Tuple[str, List[Dict[str, Any]]]:
-    items: List[Dict[str, Any]] = []
-    cmd = [
-        "powershell", "-NoProfile", "-NonInteractive", "-Command",
-        "Get-HotFix | Sort-Object InstalledOn -Descending | Select-Object -First 40 "
-        "HotFixID,Description,InstalledOn,InstalledBy | ConvertTo-Json -Compress",
-    ]
-    res = run(cmd, timeout=45)
-    if res.ok and res.out.strip():
-        import json as _json
-
-        try:
-            data = _json.loads(res.out)
-        except _json.JSONDecodeError:
-            data = []
-        if isinstance(data, dict):
-            data = [data]
-        for row in data or []:
-            installed = row.get("InstalledOn")
-            ts = None
-            if isinstance(installed, str):
-                ts = _parse_iso_like(installed)
-            items.append({
-                "ts": ts or 0,
-                "time": iso(ts) if ts else t("changes.installedOn", time=installed or "—"),
-                "kind": "windows-update",
-                "title": f"{row.get('HotFixID', 'KB')} {row.get('Description', '')}".strip(),
-                "detail": t("changes.installedBy", user=row.get("InstalledBy") or "—"),
-            })
-    return t("changes.sourceHotfix"), items
-
-
 # --------------------------------------------------------------------------- #
 #  Входы в систему
 # --------------------------------------------------------------------------- #
@@ -265,50 +226,34 @@ def _packages_windows() -> Tuple[str, List[Dict[str, Any]]]:
 def _logins_section() -> Dict[str, Any]:
     items: List[Dict[str, Any]] = []
     source = ""
-    if IS_LINUX:
-        res = run(["last", "-n", "30", "-w"], timeout=10)
-        if res.ok:
-            source = "last"
-            for line in res.lines(30):
-                parts = line.split()
-                if len(parts) < 4 or line.startswith(("wtmp", "reboot", "shutdown")):
-                    continue
-                user = parts[0]
-                if user in ("reboot", "shutdown", "wtmp"):
-                    continue
+    res = run(["last", "-n", "30", "-w"], timeout=10)
+    if res.ok:
+        source = "last"
+        for line in res.lines(30):
+            parts = line.split()
+            if len(parts) < 4 or line.startswith(("wtmp", "reboot", "shutdown")):
+                continue
+            user = parts[0]
+            if user in ("reboot", "shutdown", "wtmp"):
+                continue
+            items.append({
+                "time": " ".join(parts[-5:-2]) if len(parts) > 6 else " ".join(parts[3:6]),
+                "title": user,
+                "detail": f"{parts[1] if len(parts) > 1 else ''} {parts[2] if len(parts) > 2 else ''}".strip(),
+                "kind": "login",
+            })
+    failed = run(["lastb", "-n", "10"], timeout=10)
+    if failed.ok and failed.out.strip():
+        for line in failed.lines(10):
+            parts = line.split()
+            if len(parts) >= 3 and parts[0] not in ("btmp",):
                 items.append({
-                    "time": " ".join(parts[-5:-2]) if len(parts) > 6 else " ".join(parts[3:6]),
-                    "title": user,
-                    "detail": f"{parts[1] if len(parts) > 1 else ''} {parts[2] if len(parts) > 2 else ''}".strip(),
-                    "kind": "login",
+                    "time": " ".join(parts[-5:-2]),
+                    "title": t("changes.failedLogin", user=parts[0]),
+                    "detail": parts[2] if len(parts) > 2 else "",
+                    "kind": "login-failed",
                 })
-        failed = run(["lastb", "-n", "10"], timeout=10)
-        if failed.ok and failed.out.strip():
-            for line in failed.lines(10):
-                parts = line.split()
-                if len(parts) >= 3 and parts[0] not in ("btmp",):
-                    items.append({
-                        "time": " ".join(parts[-5:-2]),
-                        "title": t("changes.failedLogin", user=parts[0]),
-                        "detail": parts[2] if len(parts) > 2 else "",
-                        "kind": "login-failed",
-                    })
-            source += " + lastb"
-    elif IS_WINDOWS:
-        res = run(["quser"], timeout=10)
-        if res.ok and res.out.strip():
-            source = "quser"
-            for line in res.out.splitlines()[1:]:
-                line = line.strip().lstrip(">").strip()
-                if not line:
-                    continue
-                parts = line.split()
-                items.append({
-                    "time": parts[-2] if len(parts) >= 2 else "",
-                    "title": parts[0],
-                    "detail": t("changes.session", info=" ".join(parts[1:3])),
-                    "kind": "session",
-                })
+        source = f"{source} + lastb" if source else "lastb"
     return {
         "id": "logins",
         "title": t("changes.logins"),
@@ -325,7 +270,7 @@ def _logins_section() -> Dict[str, Any]:
 def _services_section() -> Dict[str, Any]:
     items: List[Dict[str, Any]] = []
     source = ""
-    if IS_LINUX and Path("/run/systemd/system").is_dir():
+    if Path("/run/systemd/system").is_dir():
         res = run(["systemctl", "list-units", "--state=failed", "--no-pager", "--plain", "--no-legend"],
                   timeout=15)
         source = "systemctl --failed"
@@ -339,29 +284,6 @@ def _services_section() -> Dict[str, Any]:
                         "detail": f"{parts[2]} — {parts[4] if len(parts) > 4 else parts[3]}",
                         "kind": "failed-unit",
                     })
-    elif IS_WINDOWS:
-        res = run([
-            "powershell", "-NoProfile", "-NonInteractive", "-Command",
-            "Get-Service | Where-Object {$_.Status -ne 'Running' -and $_.StartType -eq 'Automatic'} | "
-            "Select-Object -First 30 Name,DisplayName,Status | ConvertTo-Json -Compress",
-        ], timeout=40)
-        source = t("changes.sourceServices")
-        if res.ok and res.out.strip():
-            import json as _json
-
-            try:
-                data = _json.loads(res.out)
-            except _json.JSONDecodeError:
-                data = []
-            if isinstance(data, dict):
-                data = [data]
-            for row in data or []:
-                items.append({
-                    "time": "",
-                    "title": row.get("Name", "?"),
-                    "detail": f"{row.get('DisplayName', '')} — {row.get('Status', '')}",
-                    "kind": "service",
-                })
     return {
         "id": "services",
         "title": t("changes.services"),
@@ -379,49 +301,22 @@ def _logs_section(hours: float) -> Dict[str, Any]:
     items: List[Dict[str, Any]] = []
     source = ""
     since = max(1, int(hours))
-    if IS_LINUX:
-        res = run(["journalctl", "-p", "err", "--no-pager", "-o", "short-iso",
-                   "-n", "60", "--since", f"-{since}h"], timeout=20)
-        if res.ok and res.out.strip():
-            source = "journalctl -p err"
-            for line in res.lines(60):
-                stamp, _, rest = line.partition(" ")
-                items.append({"time": stamp, "ts": _parse_iso_like(stamp) or 0,
-                              "title": rest[:200], "detail": "", "kind": "log-error"})
-        else:
-            for path in ("/var/log/syslog", "/var/log/messages", "/var/log/kern.log"):
-                if Path(path).is_file():
-                    source = path
-                    for line in _tail_lines_safe(Path(path), 2000):
-                        if re.search(r"\b(error|crit|panic|fail)", line, re.I):
-                            items.append({"time": line[:15], "title": line[16:220], "detail": "", "kind": "log-error"})
-                    break
-    elif IS_WINDOWS:
-        res = run([
-            "powershell", "-NoProfile", "-NonInteractive", "-Command",
-            "Get-WinEvent -FilterHashtable @{LogName='System';Level=1,2} -MaxEvents 40 -ErrorAction SilentlyContinue | "
-            "Select-Object TimeCreated,ProviderName,Id,LevelDisplayName,Message | ConvertTo-Json -Compress -Depth 3",
-        ], timeout=60)
-        if res.ok and res.out.strip():
-            import json as _json
-
-            source = t("changes.sourceWinEvents")
-            try:
-                data = _json.loads(res.out)
-            except _json.JSONDecodeError:
-                data = []
-            if isinstance(data, dict):
-                data = [data]
-            for row in data or []:
-                ts = _parse_iso_like(str(row.get("TimeCreated", "")))
-                message = (row.get("Message") or "").split("\n")[0][:220]
-                items.append({
-                    "time": iso(ts) if ts else str(row.get("TimeCreated", "")),
-                    "ts": ts or 0,
-                    "title": message,
-                    "detail": f"{row.get('ProviderName', '')} #{row.get('Id', '')} {row.get('LevelDisplayName', '')}",
-                    "kind": "log-error",
-                })
+    res = run(["journalctl", "-p", "err", "--no-pager", "-o", "short-iso",
+               "-n", "60", "--since", f"-{since}h"], timeout=20)
+    if res.ok and res.out.strip():
+        source = "journalctl -p err"
+        for line in res.lines(60):
+            stamp, _, rest = line.partition(" ")
+            items.append({"time": stamp, "ts": _parse_iso_like(stamp) or 0,
+                          "title": rest[:200], "detail": "", "kind": "log-error"})
+    else:
+        for path in ("/var/log/syslog", "/var/log/messages", "/var/log/kern.log"):
+            if Path(path).is_file():
+                source = path
+                for line in _tail_lines_safe(Path(path), 2000):
+                    if re.search(r"\b(error|crit|panic|fail)", line, re.I):
+                        items.append({"time": line[:15], "title": line[16:220], "detail": "", "kind": "log-error"})
+                break
     items.sort(key=lambda i: i.get("ts", 0), reverse=True)
     return {
         "id": "logs",

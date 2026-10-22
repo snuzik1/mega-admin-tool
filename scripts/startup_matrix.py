@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Симуляция запуска MegaTool в 10 профилях Windows, Linux и macOS.
+"""Симуляция запуска MegaTool в 10 профилях Linux.
 
 Скрипт не запускает приложение и не ставит зависимости: он подменяет
 subprocess-вызовы и проверяет, что `start.py` выбирает правильный Python
 внутри venv, создаёт окружение только при необходимости и передаёт
 аргументы в `python -m megatool`.
 
-Запуск: python scripts/startup_matrix.py
+Запуск: python3 scripts/startup_matrix.py
 Тесты: pytest tests/test_startup_matrix.py
 """
 
@@ -17,7 +17,7 @@ import io
 import sys
 import tempfile
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -29,56 +29,57 @@ import start  # noqa: E402  (путь к проекту добавляется �
 
 PROFILES: List[Dict[str, object]] = [
     {
-        "name": "Windows 10 / Python 3.8",
-        "platform": "Windows 10",
-        "windows": True,
+        "name": "Debian 12 / Python 3.8",
+        "platform": "Debian 12",
         "python": (3, 8, 10),
         "venv": "ready",
         "deps": True,
         "expect": "launch",
     },
     {
-        "name": "Windows 11 / Python 3.12",
-        "platform": "Windows 11",
-        "windows": True,
-        "python": (3, 12, 8),
-        "venv": "new",
-        "deps": False,
-        "expect": "launch",
-    },
-    {
-        "name": "Windows Server / Python 3.14",
-        "platform": "Windows Server 2022",
-        "windows": True,
-        "python": (3, 14, 0),
-        "venv": "stale",
-        "deps": True,
-        "expect": "stale",
-    },
-    {
-        "name": "Windows, путь с пробелом / 3.10",
-        "platform": "Windows 10 (OneDrive)",
-        "windows": True,
+        "name": "Ubuntu 22.04 / Python 3.10",
+        "platform": "Ubuntu 22.04",
         "python": (3, 10, 14),
-        "venv": "new",
-        "deps": False,
-        "expect": "launch",
-        "spaces": True,
-    },
-    {
-        "name": "Debian 12 / Python 3.11",
-        "platform": "Debian 12",
-        "windows": False,
-        "python": (3, 11, 9),
         "venv": "ready",
-        "deps": True,
+        "deps": False,
         "expect": "launch",
     },
     {
         "name": "Ubuntu 24.04 / Python 3.12",
         "platform": "Ubuntu 24.04",
-        "windows": False,
         "python": (3, 12, 8),
+        "venv": "new",
+        "deps": False,
+        "expect": "launch",
+    },
+    {
+        "name": "Ubuntu 24.04 / Python 3.14",
+        "platform": "Ubuntu 24.04",
+        "python": (3, 14, 0),
+        "venv": "new",
+        "deps": False,
+        "expect": "launch",
+    },
+    {
+        "name": "Fedora 40 / Python 3.12",
+        "platform": "Fedora 40",
+        "python": (3, 12, 8),
+        "venv": "ready",
+        "deps": False,
+        "expect": "launch",
+    },
+    {
+        "name": "Rocky Linux 9 / Python 3.9",
+        "platform": "Rocky Linux 9",
+        "python": (3, 9, 18),
+        "venv": "ready",
+        "deps": True,
+        "expect": "launch",
+    },
+    {
+        "name": "Arch Linux / Python 3.13",
+        "platform": "Arch Linux",
+        "python": (3, 13, 1),
         "venv": "new",
         "deps": False,
         "expect": "launch",
@@ -86,38 +87,27 @@ PROFILES: List[Dict[str, object]] = [
     {
         "name": "Alpine 3.20 / Python 3.12",
         "platform": "Alpine 3.20",
-        "windows": False,
         "python": (3, 12, 8),
         "venv": "ready",
         "deps": False,
         "expect": "launch",
     },
     {
-        "name": "macOS 14 Intel / Python 3.10",
-        "platform": "macOS 14 (Intel)",
-        "windows": False,
-        "python": (3, 10, 14),
-        "venv": "ready",
-        "deps": True,
-        "expect": "launch",
-    },
-    {
-        "name": "macOS 15 Apple Silicon / 3.12",
-        "platform": "macOS 15 (arm64)",
-        "windows": False,
-        "python": (3, 12, 8),
+        "name": "Debian, путь с пробелом / 3.11",
+        "platform": "Debian 12 (путь с пробелом)",
+        "python": (3, 11, 9),
         "venv": "new",
         "deps": False,
         "expect": "launch",
+        "spaces": True,
     },
     {
-        "name": "macOS 15 Apple Silicon / 3.13",
-        "platform": "macOS 15 (arm64)",
-        "windows": False,
-        "python": (3, 13, 1),
-        "venv": "ready",
-        "deps": False,
-        "expect": "launch",
+        "name": "Debian 12 / старое venv / 3.12",
+        "platform": "Debian 12",
+        "python": (3, 12, 8),
+        "venv": "stale",
+        "deps": True,
+        "expect": "stale",
     },
 ]
 
@@ -146,12 +136,6 @@ def _fake_run(calls: List[List[str]], py: Path, profile: Dict[str, object]):
     return runner
 
 
-def _expected_python_parts(windows: bool) -> Tuple[str, str]:
-    if windows:
-        return ("Scripts", "python.exe")
-    return ("bin", "python")
-
-
 def simulate(profile: Dict[str, object]) -> Dict[str, object]:
     """Прогоняет один профиль через настоящий start.main() с mock subprocess."""
     with tempfile.TemporaryDirectory(prefix="megatool-startup-") as tmp:
@@ -160,8 +144,7 @@ def simulate(profile: Dict[str, object]) -> Dict[str, object]:
         root.mkdir()
         (root / "requirements.txt").write_text("fastapi\n", encoding="utf-8")
         venv = root / ".venv"
-        windows = bool(profile["windows"])
-        py = start.venv_python(venv, windows)
+        py = start.venv_python(venv)
 
         if profile["venv"] != "new":
             py.parent.mkdir(parents=True)
@@ -173,9 +156,9 @@ def simulate(profile: Dict[str, object]) -> Dict[str, object]:
         with contextlib.redirect_stdout(output):
             with mock.patch.object(start, "run", side_effect=runner):
                 with mock.patch.object(start.sys, "version_info", profile["python"]):
-                    code = start.main(["--no-browser"], root=root, venv=venv, windows=windows)
+                    code = start.main(["--no-browser"], root=root, venv=venv)
 
-        path_ok = py.parts[-2:] == _expected_python_parts(windows)
+        path_ok = py.parts[-2:] == ("bin", "python")
         launched = bool(calls) and calls[-1][1:3] == ["-m", "megatool"]
         created = any(cmd[1:3] == ["-m", "venv"] for cmd in calls)
         installed = any("pip" in cmd for cmd in calls)
@@ -203,7 +186,8 @@ def simulate(profile: Dict[str, object]) -> Dict[str, object]:
 
 
 def main() -> int:
-    print("Симуляция запуска MegaTool: 10 профилей Windows / Linux / macOS")
+    total = len(PROFILES)
+    print(f"Симуляция запуска MegaTool: {total} профилей Linux")
     print("-" * 82)
     failed = 0
     for number, profile in enumerate(PROFILES, 1):
@@ -212,7 +196,7 @@ def main() -> int:
         if not result["ok"]:
             failed += 1
         print(
-            f"[{number:02d}/10] {status} {result['name']:<36} "
+            f"[{number:02d}/{total:02d}] {status} {result['name']:<36} "
             f"{result['path']:<18} {result['summary']}"
         )
         if not result["ok"] and result["output"]:
@@ -222,7 +206,7 @@ def main() -> int:
     if failed:
         print(f"Провалено профилей: {failed}")
         return 1
-    print("Все 10 профилей прошли.")
+    print(f"Все {total} профилей прошли.")
     return 0
 
 

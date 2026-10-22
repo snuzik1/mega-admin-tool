@@ -1,4 +1,4 @@
-"""Проверки симуляции запуска на Windows, Linux и macOS."""
+"""Проверки симуляции запуска в Linux-профилях."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ def test_startup_profile(profile):
 
     assert result["ok"], f"{profile['name']}: {result}"
     assert result["code"] in (0, 1)
-    assert result["path"] in ("Scripts/python.exe", "bin/python")
+    assert result["path"] == "bin/python"
     if profile["expect"] == "stale":
         assert not result["launched"]
         assert not result["created"]
@@ -27,14 +27,7 @@ def test_startup_profile(profile):
 
 
 def test_venv_python_layout() -> None:
-    assert start.venv_python(Path("venv"), windows=True).parts[-2:] == (
-        "Scripts",
-        "python.exe",
-    )
-    assert start.venv_python(Path("venv"), windows=False).parts[-2:] == (
-        "bin",
-        "python",
-    )
+    assert start.venv_python(Path("venv")).parts[-2:] == ("bin", "python")
 
 
 def test_relative_venv_is_relative_to_project() -> None:
@@ -52,7 +45,7 @@ def test_help_and_version_skip_setup(monkeypatch, tmp_path: Path, flag: str) -> 
     monkeypatch.setattr(start, "run", fake_run)
     monkeypatch.setattr(start.sys, "version_info", (3, 12, 0))
 
-    code = start.main([flag], root=tmp_path, venv=tmp_path / ".venv", windows=False)
+    code = start.main([flag], root=tmp_path, venv=tmp_path / ".venv")
 
     assert code == 0
     assert calls == [[start.sys.executable, "-m", "megatool", flag]]
@@ -69,21 +62,21 @@ def test_old_python_is_rejected(monkeypatch, tmp_path: Path, capsys) -> None:
     monkeypatch.setattr(start, "run", fake_run)
     monkeypatch.setattr(start.sys, "version_info", (3, 7, 17))
 
-    code = start.main([], root=tmp_path, venv=tmp_path / ".venv", windows=False)
+    code = start.main([], root=tmp_path, venv=tmp_path / ".venv")
 
     assert code == 1
     assert calls == []
     assert "Python 3.8" in capsys.readouterr().out
 
 
-def test_venv_failure_has_platform_hint(monkeypatch, tmp_path: Path, capsys) -> None:
+def test_venv_failure_has_linux_hint(monkeypatch, tmp_path: Path, capsys) -> None:
     def fake_run(cmd, cwd=None, quiet=False):  # type: ignore[no-untyped-def]
         return 1
 
     monkeypatch.setattr(start, "run", fake_run)
     monkeypatch.setattr(start.sys, "version_info", (3, 12, 0))
 
-    code = start.main([], root=tmp_path, venv=tmp_path / ".venv", windows=True)
+    code = start.main([], root=tmp_path, venv=tmp_path / ".venv")
 
     assert code == 1
-    assert "python.org" in capsys.readouterr().out
+    assert "python3-venv" in capsys.readouterr().out

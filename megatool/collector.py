@@ -478,8 +478,8 @@ class Collector:
         """Быстрый путь для таблицы процессов: лёгкий обход всех процессов,
         затем подробности только для тех, кто попал в топ.
 
-        На Windows полный обход с cmdline/username/memory_info стоит секунды;
-        здесь эти поля читаются лишь для `limit` процессов (обычно 12–50).
+        Полный обход с cmdline/username/memory_info дорог; здесь эти поля
+        читаются лишь для `limit` процессов (обычно 12–50).
         """
         cached = self._fast_rows_cache
         if cached is not None and time.monotonic() - cached[0] < 2.0:

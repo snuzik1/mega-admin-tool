@@ -14,19 +14,13 @@ concurrency:
 
 jobs:
   test:
-    name: ${{ matrix.os }} / Python ${{ matrix.python }}
-    runs-on: ${{ matrix.os }}
+    name: Linux / Python ${{ matrix.python }}
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
         python: ["3.8", "3.12", "3.14"]
-        include:
-          - os: macos-latest
-            python: "3.12"
-          - os: macos-latest
-            python: "3.14"
     env:
       PYTHONUTF8: "1"
       MEGATOOL_HOME: ${{ github.workspace }}/.ci-home
@@ -55,16 +49,11 @@ jobs:
       - name: Проверка запуска
         run: python start.py --version
 
-      - name: Проверка обёртки Windows
-        if: runner.os == 'Windows'
-        run: powershell -NoProfile -ExecutionPolicy Bypass -File .\run.ps1 --version
-
-      - name: Проверка обёртки Unix
-        if: runner.os != 'Windows'
+      - name: Проверка обёртки
         run: bash run.sh --version
 
-      - name: Матрица запуска (10 профилей)
-        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.12'
+      - name: Матрица запуска (Linux-профили)
+        if: matrix.python == '3.12'
         run: python scripts/startup_matrix.py
 
       - name: Синтаксис JavaScript

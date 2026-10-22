@@ -2,13 +2,14 @@
 
 [![CI](https://github.com/snuzik1/mega-admin-tool/actions/workflows/ci.yml/badge.svg)](https://github.com/snuzik1/mega-admin-tool/actions/workflows/ci.yml)
 
-**Версия:** 0.7.0 · **Python:** 3.8+ · **Лицензия:** MIT · **Интерфейс:** RU/EN · **Статус:** alpha
+**Версия:** 0.7.0 · **Платформа:** Linux · **Python:** 3.8+ · **Лицензия:** MIT · **Интерфейс:** RU/EN · **Статус:** alpha
 
-**MegaTool** — открытая (MIT) локальная веб-консоль администратора и DevOps.
-Один Python-процесс отдаёт и API, и интерфейс: мониторинг сервера, произвольные
-серверы и сервисы, контейнеры, балансировщик нагрузки, редактор конфигов,
-каталог приложений, наборы конфигов, автоматическая настройка серверов по SSH,
-Ansible и Kubernetes — всё в браузере, без облаков и внешних сервисов.
+**MegaTool** — открытая (MIT) локальная веб-консоль администратора и DevOps
+для Linux. Один Python-процесс отдаёт и API, и интерфейс: мониторинг сервера,
+произвольные серверы и сервисы, контейнеры, балансировщик нагрузки, редактор
+конфигов, каталог приложений, наборы конфигов, автоматическая настройка
+серверов по SSH, Ansible и Kubernetes — всё в браузере, без облаков и внешних
+сервисов. Windows и macOS не поддерживаются.
 
 * Два языка интерфейса: **русский и английский** (переключатель в верхней панели
   или в настройках). Серверные сообщения, алерты и каталог приложений тоже
@@ -38,10 +39,14 @@ Ansible и Kubernetes — всё в браузере, без облаков и �
 
 * **Python 3.8+ вместо 3.10+**: все аннотации приведены к `typing`
   (`List`, `Dict`, `Optional` и т. п.), убраны вызовы из 3.9+, зависимости
-  закреплены совместимыми диапазонами, CI проверяет Python 3.8, 3.12 и 3.14.
-* **Один запуск для Windows, Linux и macOS**: `start.py` сам создаёт `.venv`
-  и ставит зависимости; `start.cmd`, `run.ps1` и `run.sh` только делегируют
-  ему аргументы. `--help` и `--version` работают без создания окружения.
+  закреплены совместимыми диапазонами, CI проверяет Python 3.8, 3.12 и 3.14
+  на Ubuntu.
+* **Запуск на Linux одной командой**: `start.py` сам создаёт `.venv`
+  и ставит зависимости; `run.sh` только передаёт ему аргументы. `--help`
+  и `--version` работают без создания окружения.
+* **Только Linux**: удалены поддержка Windows и macOS, Windows-обёртки
+  `start.cmd`/`run.ps1`, PowerShell-скрипты и платформенные ветки в коде,
+  а также Windows/macOS-профили CI и симуляции запуска.
 * **Система доступа удалена**: пользователи, пресеты прав, сессии, мастер-токен,
   раздел «Доступ» и окна входа/настройки пароля больше не входят в проект.
   Агентские токены мониторинга сохранены — это отдельный механизм.
@@ -77,86 +82,28 @@ Ansible и Kubernetes — всё в браузере, без облаков и �
 
 ## Быстрый старт
 
-Нужен только Python 3.8+ (без Docker, Node.js и сборки).
-
-### Универсальный способ
-
-```bash
-git clone https://github.com/snuzik1/mega-admin-tool.git
-cd mega-admin-tool
-
-# Linux / macOS
-python3 start.py
-
-# Windows (если python есть в PATH)
-python start.py
-```
-
-Для скачивания архива без Git подойдёт **Code → Download ZIP**.
-
-Первый запуск: создаётся `.venv` и ставятся **5 runtime-зависимостей**
-(обычно ~15 секунд при нормальной сети). Все следующие запуски — сразу
-приложение, pip не вызывается. Флаги CLI передаются как есть:
-`python start.py --port 9000 --no-browser`.
-
-`start.py` — единственное место с логикой подготовки окружения при обычном
-запуске. Обёртки `start.cmd` (Windows), `run.ps1` (PowerShell) и `run.sh`
-(Linux/macOS) лишь находят Python и передают аргументы, поэтому поведение
-на всех ОС одинаковое. Каталог окружения можно задать через `MEGATOOL_VENV`
-(относительный путь считается от каталога проекта).
-
-### Windows
-
-Нужен Python 3.8+. При установке с python.org отметьте **Add python.exe to
-PATH**. Если команда `python` не находится, используйте лаунчер `py -3`.
-
-**1. Двойной щелчок**
-
-`start.cmd` — создаёт или проверяет `.venv`, ставит зависимости и открывает
-браузер. Подходит для обычного запуска без терминала.
-
-**2. PowerShell**
-
-```powershell
-cd "C:\путь\к\mega-admin-tool"
-.\run.ps1
-```
-
-Порт и браузер можно задать параметрами:
-
-```powershell
-.\run.ps1 -Port 9000 -NoBrowser
-```
-
-Если PowerShell блокирует скрипт:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\run.ps1
-```
-
-**3. Вручную через Python**
-
-```powershell
-python start.py
-# или, если python не в PATH:
-py -3 start.py
-```
-
-### Linux
-
-Нужен Python 3.8+ и поддержка `venv`. На Debian/Ubuntu при ошибке
-`ensurepip is not available` установите пакет:
+MegaTool работает только на Linux. Нужен Python 3.8+ и модуль `venv`
+(без Docker, Node.js и сборки). На Debian/Ubuntu при ошибке
+`ensurepip is not available` установите пакеты:
 
 ```bash
 sudo apt update
 sudo apt install python3 python3-venv
 ```
 
-**1. Скрипт запуска**
+На Fedora: `sudo dnf install python3`; на Arch: `sudo pacman -S python`.
+
+### Клонирование и запуск
 
 ```bash
-cd ~/mega-admin-tool
+git clone https://github.com/snuzik1/mega-admin-tool.git
+cd mega-admin-tool
+
+# через скрипт-обёртку
 bash run.sh
+
+# или напрямую
+python3 start.py
 ```
 
 Если файл исполняемый, можно короче:
@@ -166,63 +113,45 @@ chmod +x run.sh start.py
 ./run.sh
 ```
 
-**2. Напрямую через Python**
-
-```bash
-python3 start.py
-```
-
-Флаги передаются как обычно:
+Флаги CLI передаются как есть:
 
 ```bash
 python3 start.py --port 9000 --no-browser
 ```
 
-**3. Переменные окружения**
-
-`run.sh` понимает `MEGATOOL_HOST` и `MEGATOOL_PORT`:
+`run.sh` понимает переменные `MEGATOOL_HOST` и `MEGATOOL_PORT`:
 
 ```bash
 MEGATOOL_PORT=9000 bash run.sh
 MEGATOOL_HOST=127.0.0.1 MEGATOOL_PORT=9000 bash run.sh --no-browser
 ```
 
-### macOS
+Для скачивания архива без Git подойдёт **Code → Download ZIP**.
 
-```bash
-python3 start.py
-# или
-bash run.sh
-```
-
-Поддерживаются Intel и Apple Silicon: используется `venv/bin/python` и
-стандартные wheel-пакеты зависимостей. Совместимость macOS проверяется
-в CI на `macos-latest`; те же сценарии входят в симуляцию 10 профилей.
-
-Для запуска после перезагрузки на Linux и Windows есть готовые скрипты
-автозапуска — см. раздел [«Автозапуск»](#автозапуск).
+Первый запуск: создаётся `.venv` и ставятся **5 runtime-зависимостей**
+(обычно ~15 секунд при нормальной сети). Все следующие запуски — сразу
+приложение, pip не вызывается. `start.py` — единственное место с логикой
+подготовки окружения; `run.sh` только находит Python и передаёт аргументы.
+Каталог окружения можно задать через `MEGATOOL_VENV` (относительный путь
+считается от каталога проекта).
 
 ### Для разработки
 
 ```bash
-# Windows
-powershell -ExecutionPolicy Bypass -File scripts\bootstrap.ps1 -Dev
-# Linux
 bash scripts/bootstrap.sh --dev
 ```
 
 Ставит сверх runtime-набора pytest, httpx, ruff и esprima (проверки и линт).
 
-Проверить запуск на 10 профилях Windows, Linux и macOS без реальных машин:
+Проверить запуск на 10 Linux-профилях без реальных машин:
 
 ```bash
-.venv/bin/python scripts/startup_matrix.py       # Linux/macOS
-.venv\Scripts\python.exe scripts\startup_matrix.py  # Windows
+.venv/bin/python scripts/startup_matrix.py
 ```
 
-Скрипт подменяет subprocess-вызовы и проверяет выбор `Scripts/python.exe`
-или `bin/python`, создание/повторное использование venv, установку
-зависимостей и передачу флагов. Те же профили выполняются в pytest.
+Скрипт подменяет subprocess-вызовы и проверяет выбор `bin/python`,
+создание/повторное использование venv, установку зависимостей и передачу
+флагов. Те же профили выполняются в pytest.
 
 Приложение слушает `127.0.0.1:8787` и само открывает браузер. Отдельного входа
 нет: интерфейс доступен сразу после запуска. Если открываете MegaTool по сети,
@@ -230,19 +159,6 @@ bash scripts/bootstrap.sh --dev
 с аутентификацией.
 
 ## Автозапуск
-
-### Windows
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\install-autostart.ps1
-```
-
-Создаёт задачу планировщика **MegaTool** при входе пользователя (без прав
-администратора) и сразу запускает её. Порт можно задать явно:
-`... -Port 9000`, автозапуск при загрузке — `... -AtStartup`.
-Удаление: `powershell -ExecutionPolicy Bypass -File scripts\uninstall-autostart.ps1`.
-
-### Linux
 
 ```bash
 bash scripts/install-autostart.sh           # при входе пользователя
@@ -263,7 +179,7 @@ journalctl --user -u megatool.service -f
 ## Командная строка
 
 ```
-python -m megatool [--host 127.0.0.1] [--port 8787] [--no-browser]
+python3 -m megatool [--host 127.0.0.1] [--port 8787] [--no-browser]
                   [--home ПУТЬ] [--config ФАЙЛ] [--log-level info] [--reload]
 ```
 
@@ -273,7 +189,7 @@ python -m megatool [--host 127.0.0.1] [--port 8787] [--no-browser]
 
 ## Рабочий каталог
 
-По умолчанию `~/.megatool` (или `%USERPROFILE%\.megatool` на Windows):
+По умолчанию `~/.megatool`:
 
 ```
 ~/.megatool/
@@ -488,8 +404,7 @@ MegaTool создан для локального использования и 
 * размер тела запроса ограничен 25 МБ;
 * `PATCH /api/settings` и импорт принимают только известные секции; старый
   `auth` отбрасывается, неизвестные/опасные значения не применяются;
-* на POSIX `config.json` создаётся с правами `0600`, каталоги `~/.megatool` и
-  `logs` — `0700`;
+* `config.json` создаётся с правами `0600`, каталоги `~/.megatool` и `logs` — `0700`;
 * все изменяющие действия пишутся в `logs/audit.jsonl`, журнал ротируется
   (`audit.max_mb`, `audit.keep`) и виден в разделе «Изменения»;
 * деструктивные операции (kill процесса, удаление контейнера/подов/файлов)
@@ -504,13 +419,12 @@ MegaTool создан для локального использования и 
 ## Тесты
 
 ```bash
-.venv\Scripts\python.exe -m pytest -q      # Windows
-.venv/bin/python -m pytest -q              # Linux
-.venv\Scripts\python.exe scripts\jscheck.py  # синтаксис JS (esprima)
+.venv/bin/python -m pytest -q              # тесты
+.venv/bin/python scripts/jscheck.py        # синтаксис JS (esprima)
 ```
 
-Те же проверки запускает GitHub Actions (`.github/workflows/ci.yml`) на Ubuntu,
-Windows и macOS (Python 3.8, 3.12 и 3.14; на macOS — 3.12 и 3.14).
+Те же проверки запускает GitHub Actions (`.github/workflows/ci.yml`) на Ubuntu
+с Python 3.8, 3.12 и 3.14.
 
 Покрыто: API и маршруты, песочница файлов, балансировщик (реальный прокси и
 health-checks), рендер всех рецептов, задачи с логами и stdin, Ansible-инвентарь,
@@ -521,7 +435,7 @@ health-checks), рендер всех рецептов, задачи с лога
 конфигов (создание/файлы/экспорт ZIP), SSH-серверы (CRUD, задачи, dry-run,
 плейбуки, валидация), удалённый агент (настоящий HTTP-сервер и API) и живой
 uvicorn с WebSocket. Изоляция — отдельный `MEGATOOL_HOME` на прогон. Всего 116
-тестов: на Windows 115 проходят, один POSIX-only пропускается.
+тестов, все проходят на Linux.
 
 ## Структура проекта
 
@@ -568,8 +482,7 @@ web/                # интерфейс без сборки (ES-модули + 
 tests/              # pytest (включая интеграционные и матрицу запуска)
 scripts/            # bootstrap, jscheck, startup_matrix, мега-агент, автозапуск
 start.py            # единый запуск (создаёт .venv при первом старте)
-start.cmd           # двойной щелчок в Windows
-run.ps1 / run.sh    # обёртки запуска для Windows / Linux / macOS
+run.sh              # обёртка запуска для Linux
 ```
 
 Подробнее об устройстве — в [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md),
@@ -591,9 +504,9 @@ MIT — см. [LICENSE](LICENSE). Делайте что хотите, тольк
 
 ## English summary
 
-**MegaTool** is an open-source (MIT) local web console for sysadmins and DevOps,
-running on Python 3.8+ as a single process (FastAPI + vanilla-JS frontend, no
-build step, no CDN). It monitors the host (CPU, memory, disks, network, temperatures, alerts),
+**MegaTool** is an open-source (MIT) local web console for sysadmins and DevOps on
+Linux, running on Python 3.8+ as a single process (FastAPI + vanilla-JS frontend,
+no build step, no CDN). It monitors the host (CPU, memory, disks, network, temperatures, alerts),
 manages Docker/Podman containers and compose stacks, runs a real asyncio-based
 load balancer (round-robin, weighted, least-conn, ip-hash, random, health checks,
 nginx/haproxy export), offers a catalogue of 29 ready-to-deploy recipes, edits and
@@ -613,13 +526,13 @@ an authenticating reverse proxy, VPN or SSH tunnel. Remote-agent tokens remain a
 separate mechanism. See [docs/GUIDE.md](docs/GUIDE.md) for a quick per-section
 guide.
 The interface is responsive: on phones the navigation collapses into a burger
-menu and cards/tables adapt to the narrow screen. Autostart helpers are included
-for Windows (Scheduled Task) and Linux (systemd user unit).
+menu and cards/tables adapt to the narrow screen. An autostart helper is included
+for Linux (systemd user unit).
 
 The UI is fully bilingual (Russian and English, switchable in the top bar or
 Settings); backend messages, alerts and recipe metadata are localized as well.
 The app listens on loopback by default; API and WebSocket calls are protected
 against DNS rebinding and CSWSH (Host/Origin checks), responses get a strict CSP,
 and an audit log with rotation records changing actions. Everything runs locally;
-external tools are optional and degrade gracefully. Tested on Windows and Linux;
-macOS is covered by CI.
+external tools are optional and degrade gracefully. Runs on Linux; CI tests
+Ubuntu with Python 3.8, 3.12 and 3.14.

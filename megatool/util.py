@@ -13,7 +13,6 @@ import re
 import secrets
 import shutil
 import subprocess
-import sys
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -21,13 +20,6 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Union
 
 from .i18n import t
-
-IS_WINDOWS = os.name == "nt"
-IS_LINUX = sys.platform.startswith("linux")
-IS_MAC = sys.platform == "darwin"
-
-# Не даём дочерним процессам всплывать консольным окном на Windows.
-_CREATE_NO_WINDOW = 0x08000000 if IS_WINDOWS else 0
 
 #: Регулярка для «безопасных» идентификаторов (имена контейнеров, сервисов, групп).
 _SAFE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:@+-]{0,127}$")
@@ -107,7 +99,6 @@ def run(
             encoding="utf-8",
             errors="replace",
             timeout=timeout,
-            creationflags=_CREATE_NO_WINDOW,
         )
         return CmdResult(
             ok=proc.returncode == 0,
@@ -291,7 +282,7 @@ def atomic_write(path: Union[str, os.PathLike], text: str, mode: Optional[int] =
     ensure_dir(target.parent)
     tmp = target.with_name(target.name + ".tmp-megatool")
     write_text(tmp, text)
-    if mode is not None and not IS_WINDOWS:
+    if mode is not None:
         try:
             os.chmod(tmp, mode)
         except OSError:

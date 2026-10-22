@@ -9,15 +9,15 @@
 в сеть, обязательно задайте токен (--token или MEGATOOL_AGENT_TOKEN):
 запросы без токена будут отклоняться.
 
-Поддерживаются Linux (через /proc) и Windows (через ctypes); при наличии
-psutil используются его данные для температуры и сетевых счётчиков.
+Поддерживается Linux: CPU, память, swap, диск, uptime, load average и сеть
+читаются из /proc; при наличии psutil используются его данные для температуры
+и сетевых счётчиков.
 """
 
 from __future__ import annotations
 from typing import Dict, List, Optional, Tuple
 
 import argparse
-import ctypes
 import hmac
 import json
 import os
@@ -30,21 +30,18 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
-try:  # необязательное улучшение: температура, сеть, macOS
+try:  # необязательное улучшение: температура и сетевые счётчики
     import psutil  # type: ignore
 except Exception:  # pragma: no cover - агент должен работать и без psutil
     psutil = None  # type: ignore
 
 AGENT_VERSION = "1.0"
 CACHE_TTL = 1.0
-DISK_PATH = "/" if os.name != "nt" else "C:\\"
+DISK_PATH = "/"
 TOKEN = ""
 
 _LOCK = threading.Lock()
 _CACHE: Dict[str, object] = {"ts": 0.0, "data": None}
-
-IS_WINDOWS = os.name == "nt"
-IS_LINUX = sys.platform.startswith("linux")
 
 
 # --------------------------------------------------------------------------- #
@@ -58,33 +55,15 @@ class _CpuSampler:
         self._prime()
 
     def _read(self) -> Optional[Tuple[int, int]]:
-        """Возвращает (всего тиков, простой) или None, если ОС не поддерживается."""
-        if IS_LINUX:
-            try:
-                with open("/proc/stat", "r", encoding="ascii") as fh:
-                    parts = fh.readline().split()
-                values = [int(item) for item in parts[1:]]
-                idle = values[3] + (values[4] if len(values) > 4 else 0)
-                return sum(values), idle
-            except (OSError, ValueError, IndexError):
-                return None
-        if IS_WINDOWS:
-            try:
-                class FILETIME(ctypes.Structure):
-                    _fields_ = [("low", ctypes.c_uint32), ("high", ctypes.c_uint32)]
-
-                def to_int(ft: "FILETIME") -> int:
-                    return (ft.high << 32) | ft.low
-
-                idle, kernel, user = FILETIME(), FILETIME(), FILETIME()
-                kernel32 = ctypes.windll.kernel32
-                if not kernel32.GetSystemTimes(ctypes.byref(idle), ctypes.byref(kernel), ctypes.byref(user)):
-                    return None
-                total = to_int(kernel) + to_int(user)
-                return total, to_int(idle)
-            except Exception:  # pragma: no cover - старые/экзотические Windows
-                return None
-        return None
+        """Возвращает (всего тиков, простой) из /proc/stat."""
+        try:
+            with open("/proc/stat", "r", encoding="ascii") as fh:
+                parts = fh.readline().split()
+            values = [int(item) for item in parts[1:]]
+            idle = values[3] + (values[4] if len(values) > 4 else 0)
+            return sum(values), idle
+        except (OSError, ValueError, IndexError):
+            return None
 
     def _prime(self) -> None:
         with self._init:
@@ -135,47 +114,12 @@ def _linux_meminfo() -> Dict[str, int]:
     return values
 
 
-def _windows_memory() -> Tuple[int, int, int, int]:
-    """total, available, swap_total, swap_available (в байтах)."""
-    class MEMORYSTATUSEX(ctypes.Structure):
-        _fields_ = [
-            ("dwLength", ctypes.c_ulong),
-            ("dwMemoryLoad", ctypes.c_ulong),
-            ("ullTotalPhys", ctypes.c_ulonglong),
-            ("ullAvailPhys", ctypes.c_ulonglong),
-            ("ullTotalPageFile", ctypes.c_ulonglong),
-            ("ullAvailPageFile", ctypes.c_ulonglong),
-            ("ullTotalVirtual", ctypes.c_ulonglong),
-            ("ullAvailVirtual", ctypes.c_ulonglong),
-            ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
-        ]
-
-    status = MEMORYSTATUSEX()
-    status.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
-    try:
-        if not ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
-            return 0, 0, 0, 0
-    except Exception:  # pragma: no cover
-        return 0, 0, 0, 0
-    swap_total = max(0, int(status.ullTotalPageFile) - int(status.ullTotalPhys))
-    swap_avail = max(0, int(status.ullAvailPageFile) - int(status.ullAvailPhys))
-    return int(status.ullTotalPhys), int(status.ullAvailPhys), swap_total, swap_avail
-
-
 def _uptime() -> float:
-    if IS_LINUX:
-        try:
-            with open("/proc/uptime", "r", encoding="ascii") as fh:
-                return float(fh.read().split()[0])
-        except (OSError, ValueError, IndexError):
-            pass
-    if IS_WINDOWS:
-        try:
-            kernel32 = ctypes.windll.kernel32
-            kernel32.GetTickCount64.restype = ctypes.c_ulonglong
-            return float(kernel32.GetTickCount64()) / 1000.0
-        except Exception:  # pragma: no cover
-            pass
+    try:
+        with open("/proc/uptime", "r", encoding="ascii") as fh:
+            return float(fh.read().split()[0])
+    except (OSError, ValueError, IndexError):
+        pass
     if psutil is not None:
         try:
             return max(0.0, time.time() - psutil.boot_time())
@@ -185,21 +129,20 @@ def _uptime() -> float:
 
 
 def _net_totals() -> Tuple[Optional[int], Optional[int]]:
-    if IS_LINUX:
-        rx = tx = 0
-        try:
-            with open("/proc/net/dev", "r", encoding="ascii") as fh:
-                for line in fh.readlines()[2:]:
-                    name, _, rest = line.partition(":")
-                    if name.strip() == "lo":
-                        continue
-                    fields = rest.split()
-                    if len(fields) >= 9:
-                        rx += int(fields[0])
-                        tx += int(fields[8])
-            return rx, tx
-        except (OSError, ValueError):
-            pass
+    rx = tx = 0
+    try:
+        with open("/proc/net/dev", "r", encoding="ascii") as fh:
+            for line in fh.readlines()[2:]:
+                name, _, rest = line.partition(":")
+                if name.strip() == "lo":
+                    continue
+                fields = rest.split()
+                if len(fields) >= 9:
+                    rx += int(fields[0])
+                    tx += int(fields[8])
+        return rx, tx
+    except (OSError, ValueError):
+        pass
     if psutil is not None:
         try:
             counters = psutil.net_io_counters()
@@ -229,21 +172,12 @@ def collect_metrics() -> Dict[str, object]:
 
     mem_total = mem_available = 0
     swap_total = swap_available = 0
-    if IS_LINUX:
-        info = _linux_meminfo()
+    info = _linux_meminfo()
+    if info:
         mem_total = info.get("MemTotal", 0)
         mem_available = info.get("MemAvailable", info.get("MemFree", 0))
         swap_total = info.get("SwapTotal", 0)
         swap_available = info.get("SwapFree", 0)
-    elif IS_WINDOWS:
-        mem_total, mem_available, _, _ = _windows_memory()
-        if psutil is not None:
-            # Файл подкачки Windows не равен swap: psutil даёт честные цифры.
-            try:
-                sm = psutil.swap_memory()
-                swap_total, swap_available = int(sm.total), int(sm.free)
-            except Exception:
-                pass
     elif psutil is not None:
         try:
             vm = psutil.virtual_memory()

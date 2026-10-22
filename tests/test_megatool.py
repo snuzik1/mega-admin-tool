@@ -7,7 +7,6 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import pytest
@@ -114,10 +113,9 @@ def test_workspace_sandbox(home):
 
     workspace = Workspace(Config())
     with pytest.raises(PermissionError):
-        workspace.resolve("C:/Windows/System32/config.json" if os.name == "nt" else "/etc/passwd")
+        workspace.resolve("/etc/passwd")
     inside = workspace.resolve("configs/test.txt")
-    # home может быть симлинком (macOS) или коротким 8.3-путём (Windows),
-    # поэтому сравниваем уже разрешённые пути.
+    # home может быть симлинком; сравниваем уже разрешённые пути.
     assert is_within(inside, home)
 
 
@@ -254,9 +252,9 @@ def test_balancer_lifecycle_and_weights(client):
 def test_balancer_proxy_and_health():
     """Поднимаем два настоящих HTTP-бэкенда и гоняем через балансировщик реальные запросы.
 
-    Везде используем порт 0 («любой свободный»): на Windows занятый порт — самая частая
-    причина ложных падений. Клиент асинхронный (asyncio), потому что балансировщик живёт
-    в том же event loop — блокирующий fetch() остановил бы и его.
+    Везде используем порт 0 («любой свободный»): это исключает конфликты
+    с уже запущенными сервисами. Клиент асинхронный (asyncio), потому что
+    балансировщик живёт в том же event loop — блокирующий fetch() остановил бы и его.
     """
     import asyncio
     import threading

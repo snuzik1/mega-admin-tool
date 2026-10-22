@@ -87,7 +87,6 @@ export async function render(root, { app } = {}) {
       extra: h("div", { style: { maxWidth: "520px", margin: "14px auto 0", textAlign: "left" } },
         h("ul", { class: "list-clean" }, details),
         h("div", { class: "toolbar", style: { justifyContent: "center", marginTop: "12px" } },
-          button(t("containers.noEngine.winget"), () => toast(t("containers.noEngine.wingetHint"), "info", 9000), { kind: "ghost" }),
           button(t("nav.settings.title"), () => (location.hash = "#/settings#engines"), { kind: "ghost" }))),
     });
   };
