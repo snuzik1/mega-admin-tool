@@ -63,7 +63,7 @@ jobs:
           test -x scripts/startup_matrix.py
           test -x scripts/megatool-agent.py
 
-      - name: Smoke: первый запуск
+      - name: "Smoke: первый запуск"
         if: matrix.python == '3.12'
         run: bash scripts/smoke_start.sh
 
