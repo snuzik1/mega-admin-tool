@@ -52,6 +52,21 @@ jobs:
       - name: Проверка обёртки
         run: bash run.sh --version
 
+      - name: Проверка исполняемых битов
+        run: |
+          test -x run.sh
+          test -x start.py
+          test -x scripts/bootstrap.sh
+          test -x scripts/install-autostart.sh
+          test -x scripts/uninstall-autostart.sh
+          test -x scripts/smoke_start.sh
+          test -x scripts/startup_matrix.py
+          test -x scripts/megatool-agent.py
+
+      - name: Smoke: первый запуск
+        if: matrix.python == '3.12'
+        run: bash scripts/smoke_start.sh
+
       - name: Матрица запуска (Linux-профили)
         if: matrix.python == '3.12'
         run: python scripts/startup_matrix.py

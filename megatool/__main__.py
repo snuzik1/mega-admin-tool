@@ -56,6 +56,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"{APP_NAME} {__version__}")
         return 0
 
+    if sys.platform != "linux":
+        print("MegaTool поддерживает только Linux.")
+        return 1
+
     if args.home:
         os.environ["MEGATOOL_HOME"] = args.home
 

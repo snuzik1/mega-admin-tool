@@ -38,6 +38,19 @@ def venv_python(venv: Path) -> Path:
     return venv / "bin" / "python"
 
 
+def is_windows_venv(venv: Path) -> bool:
+    """Похоже ли окружение на venv, созданный в Windows."""
+    return (venv / "Scripts" / "python.exe").is_file()
+
+
+def venv_has_files(venv: Path) -> bool:
+    """Есть ли в каталоге окружения хотя бы один элемент."""
+    try:
+        return any(venv.iterdir())
+    except OSError:
+        return False
+
+
 def run(cmd: Sequence[str], cwd: Optional[Path] = None, quiet: bool = False) -> int:
     """Запускает команду без shell и возвращает код выхода."""
     output = subprocess.DEVNULL if quiet else None
@@ -90,6 +103,16 @@ def main(
         return run([sys.executable, "-m", "megatool", *args], cwd=root)
 
     if not py.is_file():
+        if is_windows_venv(venv):
+            print(f"[setup] окружение {venv} создано в Windows.")
+            print("[setup] оно несовместимо с Linux и не будет использоваться.")
+            print(f"[setup] удалите каталог и запустите снова: rm -rf \"{venv}\"")
+            return 1
+        if venv_has_files(venv):
+            print(f"[setup] каталог {venv} уже существует, но не содержит bin/python.")
+            print("[setup] это не Linux-venv или он повреждён.")
+            print(f"[setup] удалите каталог и запустите снова: rm -rf \"{venv}\"")
+            return 1
         print(f"[setup] создаю виртуальное окружение: {venv}")
         code = run([sys.executable, "-m", "venv", str(venv)], cwd=root)
         if code != 0:

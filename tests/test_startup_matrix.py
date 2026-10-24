@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import List
 
@@ -9,6 +10,11 @@ import pytest
 
 import start
 from scripts.startup_matrix import PROFILES, simulate
+
+pytestmark = pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="MegaTool поддерживает только Linux",
+)
 
 
 @pytest.mark.parametrize("profile", PROFILES, ids=[p["name"] for p in PROFILES])
