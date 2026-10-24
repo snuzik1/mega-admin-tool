@@ -77,7 +77,8 @@ def _setup_hint() -> str:
     return (
         "Linux: установите Python 3.8+ и модуль venv "
         "(Debian/Ubuntu: sudo apt install python3 python3-venv; "
-        "Fedora: sudo dnf install python3; Arch: sudo pacman -S python)."
+        "Fedora: sudo dnf install python3; Arch: sudo pacman -S python; "
+        "Alpine: sudo apk add python3 py3-pip bash)."
     )
 
 
@@ -89,19 +90,21 @@ def main(
 ) -> int:
     """Готовит окружение при необходимости и запускает `python -m megatool`."""
     args = list(sys.argv[1:] if argv is None else argv)
-    if sys.platform != "linux":
-        print("MegaTool поддерживает только Linux.")
-        return 1
-    py = venv_python(venv)
 
     if sys.version_info < MIN_VERSION:
         print("MegaTool требует Python 3.8 или новее.")
         return 1
 
-    # Справка и версия не должны ждать создания venv и установки зависимостей.
+    # Справка и версия не должны ждать создания venv, установки зависимостей
+    # и доступны на любой ОС: именно эти команды помогают понять, что запущено.
     if any(arg in FAST_ARGS for arg in args):
         return run([sys.executable, "-m", "megatool", *args], cwd=root)
 
+    if sys.platform != "linux":
+        print("MegaTool поддерживает только Linux.")
+        return 1
+
+    py = venv_python(venv)
     if not py.is_file():
         if is_windows_venv(venv):
             print(f"[setup] окружение {venv} создано в Windows.")

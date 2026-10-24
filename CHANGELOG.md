@@ -5,6 +5,29 @@
 
 ## [Unreleased]
 
+### Добавлено
+
+- Интерфейс перенесён в `megatool/web/` и включён в wheel как package-data;
+  CI собирает wheel, проверяет наличие HTML/CSS/JS и импорт `WEB_DIR` из
+  установленного пакета.
+- `MEGATOOL_VENV` теперь учитывают `scripts/bootstrap.sh` и
+  `scripts/install-autostart.sh`, а не только `start.py`.
+- Подсказка по установке для Alpine (`python3`, `py3-pip`, `bash`) и
+  smoke-проверка в контейнере Alpine 3.20.
+- `scripts/venv_path.py` — единое разрешение относительных путей, `~` и
+  переменных окружения для shell-скриптов.
+- README: раздел о переезде с Windows/macOS на WSL2/Linux, объяснение
+  `MEGATOOL_VENV` и политики Python 3.8.
+
+### Исправлено
+
+- `start.py --version` и `--help` теперь работают на любой ОС, как и
+  `python -m megatool --version`; реальный запуск по-прежнему требует Linux.
+- Понятная ошибка при попытке использовать Windows-venv (`Scripts/python.exe`)
+  в Linux, вместо невнятного сбоя `.venv/bin/python`.
+- `scripts/jscheck.py` ищет ES-модули в `megatool/web/js` независимо от
+  текущего каталога запуска.
+
 ## [0.7.0] — 2026-10-22
 
 ### Добавлено

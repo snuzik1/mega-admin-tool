@@ -7,6 +7,7 @@
 - [ ] `pytest`
 - [ ] `ruff check megatool tests`
 - [ ] `scripts/jscheck.py`
+- [ ] `python -m build --wheel` (если менялись пакет или статика)
 - [ ] Проверено в браузере (для UI)
 
 ## Влияние

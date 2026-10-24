@@ -1,6 +1,6 @@
 """FastAPI-приложение: API + статика интерфейса + WebSocket-потоки.
 
-Один процесс, один порт: `/api/*` — данные, всё остальное — интерфейс из `web/`.
+Один процесс, один порт: `/api/*` — данные, всё остальное — интерфейс из `megatool/web/`.
 WebSocket-каналы: метрики в реальном времени и живой лог задач.
 """
 
@@ -34,7 +34,7 @@ from .runtime import build_runtime
 from .security import is_loopback
 from .util import iso
 
-WEB_DIR = Path(__file__).resolve().parent.parent / "web"
+WEB_DIR = Path(__file__).resolve().parent / "web"
 
 LOOPBACK_HOSTNAMES = {"127.0.0.1", "localhost", "::1", "[::1]"}
 

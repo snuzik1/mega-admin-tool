@@ -92,6 +92,15 @@ sudo apt install python3 python3-venv
 ```
 
 На Fedora: `sudo dnf install python3`; на Arch: `sudo pacman -S python`.
+На Alpine дополнительно нужен `bash` для `run.sh`:
+
+```bash
+sudo apk add python3 py3-pip bash
+```
+
+Python 3.8 уже не поддерживается upstream, но MegaTool пока сохраняет его
+для старых дистрибутивов и проверяет в CI. Новый код должен оставаться
+совместимым с 3.8 до отдельного решения о повышении минимальной версии.
 
 ### Клонирование и запуск
 
@@ -133,7 +142,45 @@ MEGATOOL_HOST=127.0.0.1 MEGATOOL_PORT=9000 bash run.sh --no-browser
 приложение, pip не вызывается. `start.py` — единственное место с логикой
 подготовки окружения; `run.sh` только находит Python и передаёт аргументы.
 Каталог окружения можно задать через `MEGATOOL_VENV` (относительный путь
-считается от каталога проекта).
+считается от каталога проекта; переменную понимают `start.py`,
+`scripts/bootstrap.sh` и `scripts/install-autostart.sh`).
+
+### Переезд с Windows или macOS
+
+Поддержка Windows и macOS удалена в 0.7.0: обёртки `start.cmd`/`run.ps1` и
+PowerShell-скрипты больше не поставляются. Рекомендуемый путь — WSL2 с Ubuntu
+или отдельная Linux-машина. Порядок переезда:
+
+1. Установите WSL2 и Ubuntu (если ещё не установлены):
+
+   ```powershell
+   wsl --install -d Ubuntu
+   ```
+
+2. Внутри Ubuntu установите Python и `venv`:
+
+   ```bash
+   sudo apt update
+   sudo apt install python3 python3-venv
+   ```
+
+3. Клонируйте проект в домашний каталог Linux, например
+   `~/mega-admin-tool`, а не в `/mnt/c/...`: так работают права, символические
+   ссылки и `.venv`.
+
+4. Если каталог скопирован с Windows, удалите старый `.venv`. Windows-venv
+   содержит `Scripts/python.exe` и несовместим с Linux:
+
+   ```bash
+   rm -rf .venv
+   ```
+
+5. Запустите `bash run.sh` (или `python3 start.py`). При необходимости
+   перенесите настройки через **Настройки → Данные → Экспорт/Импорт**.
+
+Рабочий каталог `~/.megatool` у WSL-версии находится в домашнем каталоге
+Linux, а не в `C:\Users\...`. Старые Windows-данные автоматически не
+подхватываются.
 
 ### Для разработки
 
@@ -174,13 +221,22 @@ journalctl --user -u megatool.service -f
 ```
 
 Удаление: `bash scripts/uninstall-autostart.sh`. Оба скрипта не трогают
-запущенные вручную экземпляры и требуют уже созданное окружение (`.venv`).
+запущенные вручную экземпляры и требуют уже созданное окружение (`.venv` или
+каталог из `MEGATOOL_VENV`). Если окружение нестандартное, задайте
+`MEGATOOL_VENV` перед установкой автозапуска — служба сохранит этот путь.
 
 ## Командная строка
 
 ```
-python3 -m megatool [--host 127.0.0.1] [--port 8787] [--no-browser]
-                  [--home ПУТЬ] [--config ФАЙЛ] [--log-level info] [--reload]
+bash run.sh [--host 127.0.0.1] [--port 8787] [--no-browser]
+            [--home ПУТЬ] [--config ФАЙЛ] [--log-level info] [--reload]
+```
+
+Внутри уже созданного окружения ту же команду можно запускать напрямую:
+
+```
+.venv/bin/python -m megatool [--host 127.0.0.1] [--port 8787] [--no-browser]
+                            [--home ПУТЬ] [--config ФАЙЛ] [--log-level info] [--reload]
 ```
 
 * `--home` — рабочий каталог (то же, что переменная окружения `MEGATOOL_HOME`);
@@ -384,7 +440,7 @@ uptime фиксируется, а время выключения начинае
 | `ssh` / `scp` | настройка удалённых серверов | раздел «Настройка по SSH» ограничен |
 
 Пути к бинарникам можно указать в **Настройки → Инструменты** (полезно, если
-инструмент установлен в WSL или портативно). Там же кнопка «Проверить».
+инструмент установлен в нестандартном месте). Там же кнопка «Проверить».
 
 ## Безопасность
 
@@ -421,10 +477,11 @@ MegaTool создан для локального использования и 
 ```bash
 .venv/bin/python -m pytest -q              # тесты
 .venv/bin/python scripts/jscheck.py        # синтаксис JS (esprima)
+.venv/bin/python -m build --wheel         # wheel и package-data
 ```
 
 Те же проверки запускает GitHub Actions (`.github/workflows/ci.yml`) на Ubuntu
-с Python 3.8, 3.12 и 3.14.
+с Python 3.8, 3.12 и 3.14, в wheel-задаче и в Alpine-контейнере.
 
 Покрыто: API и маршруты, песочница файлов, балансировщик (реальный прокси и
 health-checks), рендер всех рецептов, задачи с логами и stdin, Ansible-инвентарь,
@@ -434,8 +491,8 @@ health-checks), рендер всех рецептов, задачи с лога
 одновременных задач, ротация аудита, локализация (полнота словарей), наборы
 конфигов (создание/файлы/экспорт ZIP), SSH-серверы (CRUD, задачи, dry-run,
 плейбуки, валидация), удалённый агент (настоящий HTTP-сервер и API) и живой
-uvicorn с WebSocket. Изоляция — отдельный `MEGATOOL_HOME` на прогон. Всего 116
-тестов, все проходят на Linux.
+uvicorn с WebSocket. Изоляция — отдельный `MEGATOOL_HOME` на прогон. Полный
+набор тестов проходит на Linux.
 
 ## Структура проекта
 
@@ -470,17 +527,17 @@ megatool/            # Python-пакет (backend)
   lang/             # словари backend: ru_<модуль>.py / en_<модуль>.py
   config.py         # настройки по умолчанию, пути
   util.py           # запуск процессов, helper-функции
-web/                # интерфейс без сборки (ES-модули + CSS)
-  index.html
-  css/app.css
-  js/app.js         # роутер, тема, язык, топбар, уведомления
-  js/ui.js          # компоненты (карточки, таблицы, диалоги…)
-  js/charts.js      # графики на canvas
-  js/i18n.js        # t(), переключение языка, аудит словарей
-  js/lang/{ru,en}/  # словари интерфейса по разделам
-  js/views/*.js     # 14 разделов
+  web/              # интерфейс без сборки, входит в wheel как package-data
+    index.html
+    css/app.css
+    js/app.js       # роутер, тема, язык, топбар, уведомления
+    js/ui.js        # компоненты (карточки, таблицы, диалоги…)
+    js/charts.js    # графики на canvas
+    js/i18n.js      # t(), переключение языка, аудит словарей
+    js/lang/{ru,en}/ # словари интерфейса по разделам
+    js/views/*.js   # 14 разделов
 tests/              # pytest (включая интеграционные и матрицу запуска)
-scripts/            # bootstrap, jscheck, startup_matrix, мега-агент, автозапуск
+scripts/            # bootstrap, venv_path, jscheck, startup_matrix, агент, автозапуск
 start.py            # единый запуск (создаёт .venv при первом старте)
 run.sh              # обёртка запуска для Linux
 ```
@@ -534,5 +591,6 @@ Settings); backend messages, alerts and recipe metadata are localized as well.
 The app listens on loopback by default; API and WebSocket calls are protected
 against DNS rebinding and CSWSH (Host/Origin checks), responses get a strict CSP,
 and an audit log with rotation records changing actions. Everything runs locally;
-external tools are optional and degrade gracefully. Runs on Linux; CI tests
-Ubuntu with Python 3.8, 3.12 and 3.14.
+external tools are optional and degrade gracefully. The frontend is packaged
+inside the wheel. Runs on Linux; CI tests Ubuntu with Python 3.8, 3.12 and 3.14,
+the wheel contents and an Alpine smoke run.

@@ -9,7 +9,8 @@
 - Linux и Python 3.8+.
 - Docker, Kubernetes, Ansible, nginx и SSH-клиент **не обязательны** для
   разработки и тестов.
-- Node.js и сборщик не используются: интерфейс — обычные ES-модули в `web/js`.
+- Node.js и сборщик не используются: интерфейс — обычные ES-модули в
+  `megatool/web/js`.
 
 ## Запуск и окружение
 
@@ -25,7 +26,8 @@ python3 start.py
 bash scripts/bootstrap.sh --dev
 ```
 
-Либо вручную:
+Скрипт создаёт `.venv` или каталог из `MEGATOOL_VENV` (те же правила пути,
+что в `start.py`). Либо вручную:
 
 ```bash
 python3 -m venv .venv
@@ -39,10 +41,12 @@ python -m pip install -r requirements-dev.txt
 .venv/bin/python -m pytest -q
 .venv/bin/python -m ruff check megatool tests
 .venv/bin/python scripts/jscheck.py
+.venv/bin/python -m build --wheel
 ```
 
-Все три проверки должны проходить. Если менялись только документы, достаточно
-проверить ссылки и орфографию, но CI всё равно запустит полный набор.
+Все проверки должны проходить. Если менялись только документы, достаточно
+проверить ссылки и орфографию, но CI всё равно запустит полный набор, включая
+проверку содержимого wheel и Alpine.
 
 Отдельно можно прогнать симуляцию запуска на 10 Linux-профилях (она также
 входит в pytest):
@@ -58,6 +62,8 @@ python -m pip install -r requirements-dev.txt
 - Поддерживается Python 3.8+; не используйте синтаксис и API, требующие более
   новой версии (`list[...]`, `X | None`, `Path.is_relative_to`,
   `write_text(newline=...)`, `functools.cache` и т. п.). Для аннотаций — `typing`.
+  Python 3.8 уже EOL upstream, но пока остаётся минимальным для старых
+  дистрибутивов; повышение версии — отдельное решение с записью в CHANGELOG.
 - Следуйте стилю соседнего кода: type hints, короткие функции, понятные имена.
 - Новые runtime-зависимости добавляйте только с обоснованием в PR; проект
   намеренно обходится минимумом пакетов.
@@ -72,9 +78,11 @@ python -m pip install -r requirements-dev.txt
   inline-скриптов и этапа сборки.
 - Не добавляйте `innerHTML` для недоверенных данных: используйте существующие
   DOM-хелперы и экранирование.
-- Сохраняйте стиль компонентов из `web/js/ui.js` и `web/js/views/`.
-- Новые строки интерфейса добавляйте одновременно в `web/js/lang/ru/` и
-  `web/js/lang/en/`; `jscheck` проверяет синтаксис, а тесты — полноту словарей.
+- Сохраняйте стиль компонентов из `megatool/web/js/ui.js` и
+  `megatool/web/js/views/`.
+- Новые строки интерфейса добавляйте одновременно в `megatool/web/js/lang/ru/`
+  и `megatool/web/js/lang/en/`; `jscheck` проверяет синтаксис, а тесты —
+  полноту словарей.
 
 ### Локализация
 

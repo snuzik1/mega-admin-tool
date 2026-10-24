@@ -5,7 +5,7 @@
 ```
 браузер (интерфейс без сборки)          Python-процесс (один порт)
 ┌──────────────────────────┐            ┌────────────────────────────────────┐
-│ web/index.html + ES-мод. │  HTTP/WS   │ FastAPI: /api/*  + статика web/    │
+│ megatool/web/index.html  │  HTTP/WS   │ FastAPI: /api/* + статика web/     │
 │ 14 разделов, canvas-граф.│◄──────────►│ runtime: collector, checks, hosts, │
 │ тема, плотность, RU/EN,  │            │ containers, balancers, catalog,    │
 │ мобильное меню           │            │ bundles, servers(SSH), agents, k8s,│
@@ -100,7 +100,9 @@
 
 ## Frontend
 
-`web/` — статические ES-модули. Ни сборщиков, ни фреймворков, ни CDN.
+`megatool/web/` — статические ES-модули. Ни сборщиков, ни фреймворков, ни CDN.
+Каталог входит в wheel как package-data, поэтому `pip install megatool` отдаёт
+интерфейс без отдельного клонирования репозитория.
 
 * `app.js` — роутер с «поколениями»: каждый переход получает свой контейнер,
   опоздавший рендер не перекрывает новый экран; тема (`data-theme`) и плотность
@@ -235,7 +237,8 @@ python3 megatool-agent.py --host 0.0.0.0 --port 8791 --token СЕКРЕТ
 `~/.config/systemd/user/megatool.service`, включает её и (по флагу
 `--linger`) разрешает запуск без входа. `KillSignal=SIGINT` даёт uvicorn
 корректно завершиться. Удаление — `scripts/uninstall-autostart.sh`.
-Скрипт использует уже созданный `.venv` и не изменяет настройки приложения.
+Скрипт использует уже созданный `.venv` (или каталог из `MEGATOOL_VENV`)
+и не изменяет настройки приложения.
 
 ## Безопасность
 
@@ -279,9 +282,11 @@ tests/
   test_checks.py           # проверки доступности: HTTP/TCP, валидация, алерты
   test_hosts.py            # серверы: TCP/HTTP, uptime/простой, enabled/disabled
   test_security_hardening.py # заголовки, WS Origin, настройки, импорт, права
+  test_platform_guard.py   # Linux-only, MEGATOOL_VENV, bootstrap и автозапуск
+  test_startup_matrix.py   # 10 профилей запуска Linux
   test_integration.py      # полный набор конфигов, агент, лимит задач, живой uvicorn + WS
 ```
 
-Прогон: `pytest -q` (116 тестов), `scripts/jscheck.py` (синтаксис ES-модулей),
+Прогон: `pytest -q`, `scripts/jscheck.py` (синтаксис ES-модулей),
 `ruff check .`. Всё это выполняется в CI (`.github/workflows/ci.yml`) на Ubuntu,
-Python 3.8/3.12/3.14.
+Python 3.8/3.12/3.14, плюс проверка wheel и Alpine.

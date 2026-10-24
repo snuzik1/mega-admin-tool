@@ -1,0 +1,7 @@
+recursive-include megatool/web *
+recursive-include scripts *.py *.sh
+recursive-include tests *.py
+recursive-include docs *.md
+include start.py run.sh
+include requirements.txt requirements-dev.txt
+include CHANGELOG.md CONTRIBUTING.md SECURITY.md CODE_OF_CONDUCT.md

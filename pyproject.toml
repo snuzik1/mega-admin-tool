@@ -60,8 +60,18 @@ Repository = "https://github.com/snuzik1/mega-admin-tool"
 Issues = "https://github.com/snuzik1/mega-admin-tool/issues"
 Changelog = "https://github.com/snuzik1/mega-admin-tool/blob/main/CHANGELOG.md"
 
-[tool.setuptools]
-packages = ["megatool", "megatool.lang"]
+[tool.setuptools.packages.find]
+include = ["megatool*"]
+namespaces = true
+
+[tool.setuptools.package-data]
+megatool = [
+    "web/index.html",
+    "web/css/*.css",
+    "web/js/*.js",
+    "web/js/lang/*/*.js",
+    "web/js/views/*.js",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

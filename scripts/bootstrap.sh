@@ -1,9 +1,20 @@
 #!/usr/bin/env bash
-# Создаёт .venv и ставит runtime-зависимости (быстро).
+# Создаёт окружение (по умолчанию .venv) и ставит runtime-зависимости.
 # Для разработки: bash scripts/bootstrap.sh --dev
+# Каталог можно переопределить через MEGATOOL_VENV (как в start.py).
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-VENV="$ROOT/.venv"
+
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "[bootstrap] Python 3.8+ не найден. Установите python3 и запустите снова." >&2
+  exit 1
+fi
+if ! python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 8) else 1)' 2>/dev/null; then
+  echo "[bootstrap] нужен Python 3.8 или новее." >&2
+  exit 1
+fi
+
+VENV="$(python3 "$ROOT/scripts/venv_path.py" "$ROOT" "${MEGATOOL_VENV:-.venv}")"
 REQ="requirements.txt"
 if [ "${1:-}" = "--dev" ]; then
   REQ="requirements-dev.txt"

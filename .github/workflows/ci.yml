@@ -62,6 +62,7 @@ jobs:
           test -x scripts/smoke_start.sh
           test -x scripts/startup_matrix.py
           test -x scripts/megatool-agent.py
+          test -x scripts/venv_path.py
 
       - name: "Smoke: первый запуск"
         if: matrix.python == '3.12'
@@ -73,3 +74,76 @@ jobs:
 
       - name: Синтаксис JavaScript
         run: python scripts/jscheck.py
+
+  package:
+    name: Wheel / Python 3.12
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Сборка wheel
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build --wheel
+
+      - name: Проверка содержимого wheel
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+
+          wheels = list(Path("dist").glob("*.whl"))
+          assert len(wheels) == 1, wheels
+          with ZipFile(wheels[0]) as zf:
+              names = set(zf.namelist())
+
+          required = {
+              "megatool/web/index.html",
+              "megatool/web/css/app.css",
+              "megatool/web/js/app.js",
+              "megatool/web/js/views/settings.js",
+          }
+          missing = required - names
+          assert not missing, f"В wheel нет: {sorted(missing)}"
+          js_count = sum(
+              name.startswith("megatool/web/js/") and name.endswith(".js")
+              for name in names
+          )
+          assert js_count >= 50, js_count
+          print(f"wheel: {wheels[0].name}, файлов: {len(names)}, JS: {js_count}")
+          PY
+
+      - name: Установка wheel
+        run: |
+          python -m venv /tmp/wheel-venv
+          /tmp/wheel-venv/bin/python -m pip install --upgrade pip
+          /tmp/wheel-venv/bin/python -m pip install dist/*.whl
+          cd /tmp
+          /tmp/wheel-venv/bin/python - <<'PY'
+          from megatool.server import WEB_DIR
+
+          assert "site-packages" in str(WEB_DIR), WEB_DIR
+          assert WEB_DIR.is_dir(), WEB_DIR
+          assert (WEB_DIR / "index.html").is_file(), WEB_DIR
+          print(f"WEB_DIR: {WEB_DIR}")
+          PY
+
+  alpine:
+    name: Alpine 3.20 / Python 3.12
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Smoke в Alpine
+        run: |
+          docker run --rm \
+            -v "$PWD:/src" \
+            -w /src \
+            alpine:3.20 \
+            sh -c "apk add --no-cache python3 py3-pip bash curl util-linux build-base linux-headers && bash run.sh --version && bash scripts/smoke_start.sh"

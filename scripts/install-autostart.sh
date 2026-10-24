@@ -4,6 +4,7 @@
 #   bash scripts/install-autostart.sh            # при входе пользователя
 #   bash scripts/install-autostart.sh --linger   # и без входа (после перезагрузки)
 #
+# Каталог окружения можно задать через MEGATOOL_VENV (как в start.py).
 # Служба работает от текущего пользователя, не требует root для установки.
 # Удаление: bash scripts/uninstall-autostart.sh
 
@@ -12,7 +13,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 UNIT_NAME="megatool.service"
 UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
-PYTHON="$ROOT/.venv/bin/python"
+VENV=""
+PYTHON=""
 LINGER=0
 
 for arg in "$@"; do
@@ -34,9 +36,17 @@ if ! command -v systemctl >/dev/null 2>&1; then
   exit 1
 fi
 
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "Python 3.8+ не найден. Установите python3 и запустите снова." >&2
+  exit 1
+fi
+
+VENV="$(python3 "$ROOT/scripts/venv_path.py" "$ROOT" "${MEGATOOL_VENV:-.venv}")"
+PYTHON="$VENV/bin/python"
+
 if [ ! -x "$PYTHON" ]; then
   echo "Виртуальное окружение не найдено: $PYTHON" >&2
-  echo "Сначала запустите bash run.sh — он создаст .venv и поставит зависимости." >&2
+  echo "Сначала запустите bash run.sh — он создаст окружение и поставит зависимости." >&2
   exit 1
 fi
 

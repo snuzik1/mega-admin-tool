@@ -7,7 +7,9 @@ MegaTool.
 
 - `LICENSE` (MIT), `README.md`, `SECURITY.md`, `CONTRIBUTING.md`;
 - `.gitignore`, `.gitattributes`, `.editorconfig`;
-- GitHub Actions: `.github/workflows/ci.yml` (Ubuntu, Python 3.8/3.12/3.14);
+- GitHub Actions: `.github/workflows/ci.yml` (Ubuntu, Python 3.8/3.12/3.14,
+  проверка wheel и Alpine);
+- package-data: интерфейс `megatool/web/` входит в wheel;
 - шаблоны Issue и Pull Request, Dependabot;
 - `docs/GUIDE.md` и `docs/ARCHITECTURE.md`;
 - `CHANGELOG.md` для первого релиза.
@@ -39,6 +41,22 @@ git status --short
 .venv/bin/python -m ruff check .
 .venv/bin/python scripts/jscheck.py
 .venv/bin/python scripts/startup_matrix.py
+.venv/bin/python -m build
+```
+
+После сборки проверьте, что в wheel есть интерфейс, и установите его в чистое
+окружение:
+
+```bash
+python -m venv /tmp/megatool-wheel
+/tmp/megatool-wheel/bin/pip install dist/*.whl
+cd /tmp  # чтобы не импортировался исходный megatool из текущего репозитория
+/tmp/megatool-wheel/bin/python - <<'PY'
+from megatool.server import WEB_DIR
+assert "site-packages" in str(WEB_DIR), WEB_DIR
+assert (WEB_DIR / "index.html").is_file(), WEB_DIR
+print(WEB_DIR)
+PY
 ```
 
 ## 3. Опубликуйте main
@@ -56,9 +74,12 @@ git push -u origin main
 `pyproject.toml` — раздел `[project.urls]` с Homepage, Repository, Issues и
 Changelog. При смене владельца или имени репозитория обновите их согласованно.
 
-Релиз 0.7.0 публикуется через GitHub Release. PyPI-пакет пока не готов: `web/`
-не попадает в wheel, поэтому не загружайте собранный wheel на PyPI без
-исправления package-data и проверки отдачи интерфейса.
+Релиз 0.7.0 публикуется через GitHub Release. Начиная с этой версии
+`megatool/web/` входит в wheel как package-data, поэтому пакет можно
+публиковать на PyPI после проверки из предыдущего раздела: соберите wheel,
+установите его в чистое окружение и убедитесь, что `WEB_DIR/index.html`
+существует и сервер отдаёт интерфейс. Для загрузки установите `twine`,
+выполните `twine check dist/*`, затем `twine upload dist/*`.
 
 ## 5. Настройте репозиторий
 

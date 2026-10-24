@@ -10,7 +10,11 @@ except ImportError:  # pragma: no cover
     print("esprima не установлен: pip install esprima")
     sys.exit(2)
 
-root = Path("web/js")
+ROOT = Path(__file__).resolve().parents[1]
+root = ROOT / "megatool" / "web" / "js"
+if not root.is_dir():
+    print(f"нет каталога с ES-модулями: {root}")
+    sys.exit(2)
 bad = 0
 
 
