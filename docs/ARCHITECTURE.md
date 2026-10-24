@@ -233,6 +233,13 @@ python3 megatool-agent.py --host 0.0.0.0 --port 8791 --token СЕКРЕТ
 
 ## Запуск и системные зависимости
 
+`quickstart.sh` — вход для чистой машины: скачивает tar.gz с GitHub в
+`${XDG_DATA_HOME:-$HOME/.local/share}/megatool` (или `MEGATOOL_INSTALL_DIR`),
+распаковывает и передаёт управление `run.sh`. Если рядом уже есть `start.py`
+и `run.sh`, используется локальная копия. Скачанный каталог помечается файлом
+`.megatool-managed`; `MEGATOOL_UPDATE=1` перекачивает только такие каталоги,
+чтобы случайно не удалить чужой репозиторий.
+
 `run.sh` — POSIX `sh`, поэтому работает на минимальном Alpine без `bash`.
 Он проверяет наличие Python 3.8+, модулей `venv` и `ensurepip`; если чего-то
 нет, вызывает `install.sh --system-only`. Установщик определяет пакетный

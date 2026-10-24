@@ -10,6 +10,7 @@ MegaTool.
 - GitHub Actions: `.github/workflows/ci.yml` (Ubuntu, Python 3.8/3.12/3.14,
   проверка wheel и Alpine);
 - package-data: интерфейс `megatool/web/` входит в wheel;
+- `quickstart.sh` скачивает архив и запускает MegaTool одной командой;
 - `install.sh` входит в sdist и автоматически ставит системные предпосылки;
 - шаблоны Issue и Pull Request, Dependabot;
 - `docs/GUIDE.md` и `docs/ARCHITECTURE.md`;
@@ -45,8 +46,9 @@ git status --short
 .venv/bin/python -m build
 ```
 
-После сборки проверьте, что в wheel есть интерфейс, а в sdist — `install.sh`,
-`run.sh`, `start.py` и скрипты; затем установите wheel в чистое окружение:
+После сборки проверьте, что в wheel есть интерфейс, а в sdist — `quickstart.sh`,
+`install.sh`, `run.sh`, `start.py` и скрипты; затем установите wheel в чистое
+окружение:
 
 ```bash
 python -m venv /tmp/megatool-wheel

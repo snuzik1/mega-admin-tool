@@ -41,10 +41,11 @@
   (`List`, `Dict`, `Optional` и т. п.), убраны вызовы из 3.9+, зависимости
   закреплены совместимыми диапазонами, CI проверяет Python 3.8, 3.12 и 3.14
   на Ubuntu.
-* **Запуск на Linux одной командой**: `start.py` сам создаёт `.venv`
-  и ставит зависимости. `run.sh` (POSIX `sh`) при отсутствии Python/venv
-  вызывает `install.sh`, который ставит системные пакеты, после чего
-  `start.py` готовит окружение. `--help` и `--version` не создают `.venv`.
+* **Запуск на Linux одной командой**: `quickstart.sh` скачивает архив
+  репозитория и запускает `run.sh`; `start.py` сам создаёт `.venv` и ставит
+  зависимости. `run.sh` (POSIX `sh`) при отсутствии Python/venv вызывает
+  `install.sh`, который ставит системные пакеты. `--help` и `--version` не
+  создают `.venv`.
 * **Только Linux**: удалены поддержка Windows и macOS, Windows-обёртки
   `start.cmd`/`run.ps1`, PowerShell-скрипты и платформенные ветки в коде,
   а также Windows/macOS-профили CI и симуляции запуска.
@@ -82,6 +83,60 @@
 | **Настройки** | Язык и тема, уведомления браузера, пороги, частоты опроса, удалённые агенты, пути к инструментам (включая ssh/scp), безопасность, имена Host, ротация аудита, лимиты задач, экспорт/импорт настроек |
 
 ## Быстрый старт
+
+### Скачать и запустить одной командой
+
+На чистой Linux-машине или виртуалке не нужны git и ручная установка Python:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/snuzik1/mega-admin-tool/main/quickstart.sh | sh
+```
+
+Если `curl` нет, используйте `wget`:
+
+```bash
+wget -qO- https://raw.githubusercontent.com/snuzik1/mega-admin-tool/main/quickstart.sh | sh
+```
+
+`quickstart.sh` скачает архив репозитория в `~/.local/share/megatool`
+(по умолчанию), установит недостающие системные пакеты и Python-зависимости
+и запустит MegaTool. Повторный запуск использует уже скачанный код:
+
+```bash
+~/.local/share/megatool/run.sh
+```
+
+Флаги MegaTool передаются после `sh -s --`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/snuzik1/mega-admin-tool/main/quickstart.sh | \
+  sh -s -- --port 9000 --no-browser
+```
+
+Обновить скачанный код до свежего `main`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/snuzik1/mega-admin-tool/main/quickstart.sh | \
+  MEGATOOL_UPDATE=1 sh
+```
+
+Другой каталог, ветка, тег или коммит задаются переменными
+`MEGATOOL_INSTALL_DIR` и `MEGATOOL_REF`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/snuzik1/mega-admin-tool/main/quickstart.sh | \
+  MEGATOOL_INSTALL_DIR="$HOME/megatool" MEGATOOL_REF=main sh
+```
+
+Не запускайте всю команду через `sudo`: установщик сам запросит права только
+для системных пакетов. Для воспроизводимости указывайте в `MEGATOOL_REF`
+конкретный тег или коммит.
+
+Если репозиторий уже скопирован или склонирован, достаточно одной команды:
+
+```bash
+sh run.sh
+```
 
 MegaTool работает только на Linux. Для запуска нужен Python 3.8+ с модулем
 `venv`, но ставить его вручную не обязательно: `run.sh` проверит окружение
@@ -141,7 +196,7 @@ python3 start.py
 Если файл исполняемый, можно короче:
 
 ```bash
-chmod +x run.sh install.sh start.py
+chmod +x run.sh install.sh quickstart.sh start.py
 ./run.sh
 ```
 
@@ -158,7 +213,8 @@ MEGATOOL_PORT=9000 bash run.sh
 MEGATOOL_HOST=127.0.0.1 MEGATOOL_PORT=9000 sh run.sh --no-browser
 ```
 
-Для скачивания архива без Git подойдёт **Code → Download ZIP**.
+Для скачивания архива без Git подойдёт **Code → Download ZIP**; после
+распаковки запускайте `sh run.sh`.
 
 Первый запуск: `run.sh` проверяет Python/venv и при необходимости вызывает
 `install.sh`; затем `start.py` создаёт `.venv` и ставит **5 runtime-зависимостей**
@@ -576,6 +632,7 @@ megatool/            # Python-пакет (backend)
     js/views/*.js   # 14 разделов
 tests/              # pytest (включая интеграционные и матрицу запуска)
 scripts/            # bootstrap, venv_path, jscheck, startup_matrix, агент, автозапуск
+quickstart.sh       # скачать архив с GitHub и запустить run.sh
 install.sh          # системные пакеты + вызов start.py --install-only
 start.py            # единый запуск (создаёт .venv при первом старте)
 run.sh              # POSIX-обёртка запуска, при необходимости вызывает install.sh
@@ -624,6 +681,12 @@ guide.
 The interface is responsive: on phones the navigation collapses into a burger
 menu and cards/tables adapt to the narrow screen. An autostart helper is included
 for Linux (systemd user unit).
+
+On a fresh Linux VM, one command downloads and starts everything:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/snuzik1/mega-admin-tool/main/quickstart.sh | sh
+```
 
 The UI is fully bilingual (Russian and English, switchable in the top bar or
 Settings); backend messages, alerts and recipe metadata are localized as well.

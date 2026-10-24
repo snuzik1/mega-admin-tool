@@ -51,6 +51,7 @@ python -m pip install -r requirements-dev.txt
 .venv/bin/python scripts/jscheck.py
 sh -n install.sh
 sh -n run.sh
+sh -n quickstart.sh
 .venv/bin/python -m build --wheel
 ```
 

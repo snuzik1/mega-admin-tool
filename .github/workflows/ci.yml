@@ -56,6 +56,7 @@ jobs:
         run: |
           test -x run.sh
           test -x install.sh
+          test -x quickstart.sh
           test -x start.py
           test -x scripts/bootstrap.sh
           test -x scripts/install-autostart.sh
@@ -69,8 +70,25 @@ jobs:
         run: |
           sh -n install.sh
           sh -n run.sh
+          sh -n quickstart.sh
           sh install.sh --help >/dev/null
           sh install.sh --dry-run --system-only >/dev/null
+
+      - name: Проверка quickstart
+        run: |
+          MEGATOOL_AUTO_INSTALL=0 sh quickstart.sh --version
+          git archive --format=tar.gz --prefix=mega-admin-tool-test/ HEAD > "$RUNNER_TEMP/megatool.tar.gz"
+          cd "$RUNNER_TEMP"
+          cat "$GITHUB_WORKSPACE/quickstart.sh" | \
+            MEGATOOL_ARCHIVE_URL="file://$RUNNER_TEMP/megatool.tar.gz" \
+            MEGATOOL_INSTALL_DIR="$RUNNER_TEMP/megatool-quickstart" \
+            MEGATOOL_AUTO_INSTALL=0 \
+            sh -s -- --version
+          test -f "$RUNNER_TEMP/megatool-quickstart/.megatool-managed"
+          cat "$GITHUB_WORKSPACE/quickstart.sh" | \
+            MEGATOOL_INSTALL_DIR="$RUNNER_TEMP/megatool-quickstart" \
+            MEGATOOL_AUTO_INSTALL=0 \
+            sh -s -- --version
 
       - name: "Smoke: первый запуск"
         if: matrix.python == '3.12'
@@ -137,6 +155,7 @@ jobs:
               names = {Path(name).name for name in tf.getnames()}
 
           required = {
+              "quickstart.sh",
               "install.sh",
               "run.sh",
               "start.py",
