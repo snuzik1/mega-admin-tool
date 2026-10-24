@@ -42,8 +42,9 @@
   закреплены совместимыми диапазонами, CI проверяет Python 3.8, 3.12 и 3.14
   на Ubuntu.
 * **Запуск на Linux одной командой**: `start.py` сам создаёт `.venv`
-  и ставит зависимости; `run.sh` только передаёт ему аргументы. `--help`
-  и `--version` работают без создания окружения.
+  и ставит зависимости. `run.sh` (POSIX `sh`) при отсутствии Python/venv
+  вызывает `install.sh`, который ставит системные пакеты, после чего
+  `start.py` готовит окружение. `--help` и `--version` не создают `.venv`.
 * **Только Linux**: удалены поддержка Windows и macOS, Windows-обёртки
   `start.cmd`/`run.ps1`, PowerShell-скрипты и платформенные ветки в коде,
   а также Windows/macOS-профили CI и симуляции запуска.
@@ -82,21 +83,40 @@
 
 ## Быстрый старт
 
-MegaTool работает только на Linux. Нужен Python 3.8+ и модуль `venv`
-(без Docker, Node.js и сборки). На Debian/Ubuntu при ошибке
-`ensurepip is not available` установите пакеты:
+MegaTool работает только на Linux. Для запуска нужен Python 3.8+ с модулем
+`venv`, но ставить его вручную не обязательно: `run.sh` проверит окружение
+и при необходимости вызовет `install.sh`. Установщик определяет пакетный
+менеджер (apt-get, dnf/yum, pacman, apk или zypper), ставит недостающие
+системные пакеты (может потребоваться `sudo`) и затем `start.py` создаёт
+`.venv` с пятью runtime-зависимостями. Docker, Node.js и сборка frontend
+не нужны.
+
+Если автоматическая установка не подходит, поставьте пакеты вручную:
 
 ```bash
+# Debian/Ubuntu
 sudo apt update
 sudo apt install python3 python3-venv
+
+# Fedora/RHEL
+sudo dnf install python3
+
+# Arch
+sudo pacman -S python
+
+# Alpine (bash нужен для bootstrap/smoke, но не для run.sh)
+sudo apk add python3 py3-pip bash build-base linux-headers
 ```
 
-На Fedora: `sudo dnf install python3`; на Arch: `sudo pacman -S python`.
-На Alpine дополнительно нужен `bash` для `run.sh`:
+Автоустановку системных пакетов можно отключить:
 
 ```bash
-sudo apk add python3 py3-pip bash
+MEGATOOL_AUTO_INSTALL=0 sh run.sh
 ```
+
+Прямой `python3 start.py` при ошибке создания venv или установки pip тоже
+пробует вызвать `install.sh`; переменная `MEGATOOL_AUTO_INSTALL=0` отключает
+это поведение.
 
 Python 3.8 уже не поддерживается upstream, но MegaTool пока сохраняет его
 для старых дистрибутивов и проверяет в CI. Новый код должен оставаться
@@ -111,6 +131,9 @@ cd mega-admin-tool
 # через скрипт-обёртку
 bash run.sh
 
+# на минимальном Alpine, где ещё нет bash
+sh run.sh
+
 # или напрямую
 python3 start.py
 ```
@@ -118,7 +141,7 @@ python3 start.py
 Если файл исполняемый, можно короче:
 
 ```bash
-chmod +x run.sh start.py
+chmod +x run.sh install.sh start.py
 ./run.sh
 ```
 
@@ -132,18 +155,31 @@ python3 start.py --port 9000 --no-browser
 
 ```bash
 MEGATOOL_PORT=9000 bash run.sh
-MEGATOOL_HOST=127.0.0.1 MEGATOOL_PORT=9000 bash run.sh --no-browser
+MEGATOOL_HOST=127.0.0.1 MEGATOOL_PORT=9000 sh run.sh --no-browser
 ```
 
 Для скачивания архива без Git подойдёт **Code → Download ZIP**.
 
-Первый запуск: создаётся `.venv` и ставятся **5 runtime-зависимостей**
+Первый запуск: `run.sh` проверяет Python/venv и при необходимости вызывает
+`install.sh`; затем `start.py` создаёт `.venv` и ставит **5 runtime-зависимостей**
 (обычно ~15 секунд при нормальной сети). Все следующие запуски — сразу
-приложение, pip не вызывается. `start.py` — единственное место с логикой
-подготовки окружения; `run.sh` только находит Python и передаёт аргументы.
-Каталог окружения можно задать через `MEGATOOL_VENV` (относительный путь
-считается от каталога проекта; переменную понимают `start.py`,
-`scripts/bootstrap.sh` и `scripts/install-autostart.sh`).
+приложение, pip не вызывается. Логика Python-окружения остаётся в `start.py`;
+`run.sh` только проверяет системные предпосылки и передаёт аргументы, а
+`install.sh` ставит системные пакеты и вызывает `start.py --install-only`.
+
+Установку можно запустить отдельно, без старта сервера:
+
+```bash
+sh install.sh                   # системные пакеты + .venv + runtime-зависимости
+sh install.sh --system-only     # только системные пакеты
+python3 start.py --install-only # только .venv и Python-зависимости
+```
+
+Docker, kubectl, Ansible, nginx и SSH-клиент автоматически **не** ставятся:
+они необязательны, приложение работает без них. Каталог окружения можно
+задать через `MEGATOOL_VENV` (относительный путь считается от каталога
+проекта; переменную понимают `start.py`, `scripts/bootstrap.sh` и
+`scripts/install-autostart.sh`).
 
 ### Переезд с Windows или macOS
 
@@ -157,7 +193,8 @@ PowerShell-скрипты больше не поставляются. Реком
    wsl --install -d Ubuntu
    ```
 
-2. Внутри Ubuntu установите Python и `venv`:
+2. Внутри Ubuntu можно не ставить Python вручную: `run.sh` сделает это сам.
+   Если нужен ручной вариант:
 
    ```bash
    sudo apt update
@@ -175,7 +212,7 @@ PowerShell-скрипты больше не поставляются. Реком
    rm -rf .venv
    ```
 
-5. Запустите `bash run.sh` (или `python3 start.py`). При необходимости
+5. Запустите `sh run.sh` (или `python3 start.py`). При необходимости
    перенесите настройки через **Настройки → Данные → Экспорт/Импорт**.
 
 Рабочий каталог `~/.megatool` у WSL-версии находится в домашнем каталоге
@@ -228,8 +265,8 @@ journalctl --user -u megatool.service -f
 ## Командная строка
 
 ```
-bash run.sh [--host 127.0.0.1] [--port 8787] [--no-browser]
-            [--home ПУТЬ] [--config ФАЙЛ] [--log-level info] [--reload]
+sh run.sh [--host 127.0.0.1] [--port 8787] [--no-browser]
+          [--home ПУТЬ] [--config ФАЙЛ] [--log-level info] [--reload]
 ```
 
 Внутри уже созданного окружения ту же команду можно запускать напрямую:
@@ -481,7 +518,8 @@ MegaTool создан для локального использования и 
 ```
 
 Те же проверки запускает GitHub Actions (`.github/workflows/ci.yml`) на Ubuntu
-с Python 3.8, 3.12 и 3.14, в wheel-задаче и в Alpine-контейнере.
+с Python 3.8, 3.12 и 3.14, в wheel/sdist-задаче и в чистом Alpine-контейнере,
+где `run.sh` и `install.sh` сами устанавливают пакеты.
 
 Покрыто: API и маршруты, песочница файлов, балансировщик (реальный прокси и
 health-checks), рендер всех рецептов, задачи с логами и stdin, Ansible-инвентарь,
@@ -538,8 +576,9 @@ megatool/            # Python-пакет (backend)
     js/views/*.js   # 14 разделов
 tests/              # pytest (включая интеграционные и матрицу запуска)
 scripts/            # bootstrap, venv_path, jscheck, startup_matrix, агент, автозапуск
+install.sh          # системные пакеты + вызов start.py --install-only
 start.py            # единый запуск (создаёт .venv при первом старте)
-run.sh              # обёртка запуска для Linux
+run.sh              # POSIX-обёртка запуска, при необходимости вызывает install.sh
 ```
 
 Подробнее об устройстве — в [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md),
@@ -592,5 +631,8 @@ The app listens on loopback by default; API and WebSocket calls are protected
 against DNS rebinding and CSWSH (Host/Origin checks), responses get a strict CSP,
 and an audit log with rotation records changing actions. Everything runs locally;
 external tools are optional and degrade gracefully. The frontend is packaged
-inside the wheel. Runs on Linux; CI tests Ubuntu with Python 3.8, 3.12 and 3.14,
-the wheel contents and an Alpine smoke run.
+inside the wheel. On first launch `run.sh` can install missing Python/venv
+system packages through the distro package manager (opt out with
+`MEGATOOL_AUTO_INSTALL=0`). Runs on Linux; CI tests Ubuntu with Python 3.8,
+3.12 and 3.14, the wheel contents and a clean Alpine smoke run where `run.sh`
+installs the prerequisites itself.

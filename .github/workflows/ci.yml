@@ -55,6 +55,7 @@ jobs:
       - name: Проверка исполняемых битов
         run: |
           test -x run.sh
+          test -x install.sh
           test -x start.py
           test -x scripts/bootstrap.sh
           test -x scripts/install-autostart.sh
@@ -63,6 +64,13 @@ jobs:
           test -x scripts/startup_matrix.py
           test -x scripts/megatool-agent.py
           test -x scripts/venv_path.py
+
+      - name: Проверка установщика
+        run: |
+          sh -n install.sh
+          sh -n run.sh
+          sh install.sh --help >/dev/null
+          sh install.sh --dry-run --system-only >/dev/null
 
       - name: "Smoke: первый запуск"
         if: matrix.python == '3.12'
@@ -86,10 +94,10 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Сборка wheel
+      - name: Сборка wheel и sdist
         run: |
           python -m pip install --upgrade pip build
-          python -m build --wheel
+          python -m build
 
       - name: Проверка содержимого wheel
         run: |
@@ -118,6 +126,31 @@ jobs:
           print(f"wheel: {wheels[0].name}, файлов: {len(names)}, JS: {js_count}")
           PY
 
+      - name: Проверка содержимого sdist
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from tarfile import open as tar_open
+
+          sdist = next(Path("dist").glob("*.tar.gz"))
+          with tar_open(sdist) as tf:
+              names = {Path(name).name for name in tf.getnames()}
+
+          required = {
+              "install.sh",
+              "run.sh",
+              "start.py",
+              "requirements.txt",
+              "bootstrap.sh",
+              "venv_path.py",
+              "ARCHITECTURE.md",
+              "index.html",
+          }
+          missing = required - names
+          assert not missing, f"В sdist нет: {sorted(missing)}"
+          print(f"sdist: {sdist.name}, файлов: {len(names)}")
+          PY
+
       - name: Установка wheel
         run: |
           python -m venv /tmp/wheel-venv
@@ -140,10 +173,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Smoke в Alpine
+      - name: Smoke в чистом Alpine
         run: |
           docker run --rm \
             -v "$PWD:/src" \
             -w /src \
             alpine:3.20 \
-            sh -c "apk add --no-cache python3 py3-pip bash curl util-linux build-base linux-headers && bash run.sh --version && bash scripts/smoke_start.sh"
+            sh -c "sh run.sh --version && MEGATOOL_VENV=/tmp/megatool-install sh install.sh && /tmp/megatool-install/bin/python -c 'import fastapi' && apk add --no-cache curl util-linux && bash scripts/smoke_start.sh"

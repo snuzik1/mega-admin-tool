@@ -17,7 +17,15 @@
 Пользовательский запуск одной командой:
 
 ```bash
-python3 start.py
+sh run.sh
+```
+
+`run.sh` при необходимости вызовет `install.sh` и установит системные пакеты
+через пакетный менеджер (может потребоваться `sudo`). Проверить выбор пакетов
+без изменений в системе можно так:
+
+```bash
+sh install.sh --dry-run --system-only
 ```
 
 Разработческое окружение:
@@ -41,6 +49,8 @@ python -m pip install -r requirements-dev.txt
 .venv/bin/python -m pytest -q
 .venv/bin/python -m ruff check megatool tests
 .venv/bin/python scripts/jscheck.py
+sh -n install.sh
+sh -n run.sh
 .venv/bin/python -m build --wheel
 ```
 

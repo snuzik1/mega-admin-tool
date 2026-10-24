@@ -216,3 +216,132 @@ def test_install_autostart_respects_megatool_venv(tmp_path: Path) -> None:
     assert f'ExecStart="{python}" -m megatool --no-browser' in text
     assert "daemon-reload" in log.read_text(encoding="utf-8")
     assert "enable --now megatool.service" in log.read_text(encoding="utf-8")
+
+
+def test_start_install_only_prepares_deps_without_launch(monkeypatch, tmp_path: Path, capsys) -> None:
+    calls: List[List[str]] = []
+    monkeypatch.setattr(start, "run", _no_run(calls))
+    monkeypatch.setattr(start.sys, "platform", "linux")
+    monkeypatch.setattr(start.sys, "version_info", (3, 12, 0))
+
+    venv = tmp_path / ".venv"
+    py = start.venv_python(venv)
+    py.parent.mkdir(parents=True)
+    py.write_text("", encoding="utf-8")
+
+    code = start.main(["--install-only"], root=tmp_path, venv=venv)
+
+    assert code == 0
+    assert calls
+    assert not any(cmd[1:3] == ["-m", "megatool"] for cmd in calls)
+    assert "зависимости готовы" in capsys.readouterr().out
+
+
+def test_start_auto_installs_system_deps_on_venv_failure(monkeypatch, tmp_path: Path) -> None:
+    calls: List[List[str]] = []
+    attempts = 0
+    installer = tmp_path / "install.sh"
+    installer.write_text("#!/bin/sh\n", encoding="utf-8")
+    venv = tmp_path / ".venv"
+    py = start.venv_python(venv)
+
+    def fake_run(cmd, cwd=None, quiet=False):  # type: ignore[no-untyped-def]
+        nonlocal attempts
+        argv = [str(item) for item in cmd]
+        calls.append(argv)
+        if len(argv) >= 3 and argv[1:3] == ["-m", "venv"]:
+            attempts += 1
+            if attempts == 1:
+                return 1
+            py.parent.mkdir(parents=True)
+            py.write_text("", encoding="utf-8")
+        return 0
+
+    monkeypatch.setattr(start, "run", fake_run)
+    monkeypatch.setattr(start.sys, "platform", "linux")
+    monkeypatch.setattr(start.sys, "version_info", (3, 12, 0))
+    monkeypatch.delenv("MEGATOOL_AUTO_INSTALL", raising=False)
+
+    code = start.main([], root=tmp_path, venv=venv)
+
+    assert code == 0
+    assert attempts == 2
+    assert ["sh", str(installer), "--system-only"] in calls
+    assert calls[-1][1:3] == ["-m", "megatool"]
+
+
+def test_start_retries_pip_after_system_install(monkeypatch, tmp_path: Path) -> None:
+    calls: List[List[str]] = []
+    pip_calls = 0
+    installer = tmp_path / "install.sh"
+    installer.write_text("#!/bin/sh\n", encoding="utf-8")
+    venv = tmp_path / ".venv"
+    py = start.venv_python(venv)
+    py.parent.mkdir(parents=True)
+    py.write_text("", encoding="utf-8")
+
+    def fake_run(cmd, cwd=None, quiet=False):  # type: ignore[no-untyped-def]
+        nonlocal pip_calls
+        argv = [str(item) for item in cmd]
+        calls.append(argv)
+        if len(argv) >= 3 and argv[1] == "-c" and "import fastapi" in argv[2]:
+            return 1
+        if any(part == "pip" for part in argv):
+            pip_calls += 1
+            return 1 if pip_calls == 1 else 0
+        return 0
+
+    monkeypatch.setattr(start, "run", fake_run)
+    monkeypatch.setattr(start.sys, "platform", "linux")
+    monkeypatch.setattr(start.sys, "version_info", (3, 12, 0))
+    monkeypatch.delenv("MEGATOOL_AUTO_INSTALL", raising=False)
+
+    code = start.main([], root=tmp_path, venv=venv)
+
+    assert code == 0
+    assert pip_calls == 2
+    assert ["sh", str(installer), "--system-only"] in calls
+    assert calls[-1][1:3] == ["-m", "megatool"]
+
+
+def test_start_auto_install_can_be_disabled(monkeypatch, tmp_path: Path) -> None:
+    calls: List[List[str]] = []
+    installer = tmp_path / "install.sh"
+    installer.write_text("#!/bin/sh\n", encoding="utf-8")
+
+    def fake_run(cmd, cwd=None, quiet=False):  # type: ignore[no-untyped-def]
+        calls.append([str(item) for item in cmd])
+        return 1
+
+    monkeypatch.setattr(start, "run", fake_run)
+    monkeypatch.setattr(start.sys, "platform", "linux")
+    monkeypatch.setattr(start.sys, "version_info", (3, 12, 0))
+    monkeypatch.setenv("MEGATOOL_AUTO_INSTALL", "0")
+
+    code = start.main([], root=tmp_path, venv=tmp_path / ".venv")
+
+    assert code == 1
+    assert not any(cmd[:2] == ["sh", str(installer)] for cmd in calls)
+
+
+@pytest.mark.skipif(sys.platform != "linux" or shutil.which("sh") is None,
+                    reason="нужен Linux и sh")
+def test_install_script_help_and_dry_run() -> None:
+    script = ROOT / "install.sh"
+
+    help_result = subprocess.run(
+        ["sh", str(script), "--help"],
+        capture_output=True,
+        text=True,
+    )
+    assert help_result.returncode == 0
+    assert "--system-only" in help_result.stdout
+
+    dry_run = subprocess.run(
+        ["sh", str(script), "--dry-run", "--system-only"],
+        capture_output=True,
+        text=True,
+    )
+    assert dry_run.returncode == 0, dry_run.stderr
+    assert "пакетный менеджер" in dry_run.stdout
+    assert "системные пакеты" in dry_run.stdout

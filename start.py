@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """MegaTool — запуск одной командой на Linux.
 
-    python3 start.py [параметры megatool]
+    python3 start.py [--install-only] [параметры megatool]
 
 При первом запуске создаёт .venv и ставит пять runtime-зависимостей,
 при следующих — сразу запускает приложение (pip не вызывается).
+Флаг --install-only готовит окружение и выходит, не запуская сервер.
 Каталог окружения можно переопределить переменной MEGATOOL_VENV.
 
 Команды --help и --version не требуют окружения и зависимостей.
@@ -31,6 +32,7 @@ VENV = _resolve_venv(os.environ.get("MEGATOOL_VENV") or ".venv")
 MIN_VERSION = (3, 8)
 CHECK = "import fastapi, uvicorn, websockets, psutil, yaml"
 FAST_ARGS = ("-h", "--help", "--version")
+INSTALL_ONLY = "--install-only"
 
 
 def venv_python(venv: Path) -> Path:
@@ -78,8 +80,21 @@ def _setup_hint() -> str:
         "Linux: установите Python 3.8+ и модуль venv "
         "(Debian/Ubuntu: sudo apt install python3 python3-venv; "
         "Fedora: sudo dnf install python3; Arch: sudo pacman -S python; "
-        "Alpine: sudo apk add python3 py3-pip bash)."
+        "Alpine: sudo apk add python3 py3-pip bash). "
+        "Или запустите автоматический установщик: sh install.sh."
     )
+
+
+def _auto_install_system(root: Path) -> bool:
+    """Пробует доставить системные пакеты через install.sh."""
+    if os.environ.get("MEGATOOL_AUTO_INSTALL", "1") == "0":
+        return False
+    installer = root / "install.sh"
+    if not installer.is_file():
+        return False
+    print("[setup] пробую доставить системные пакеты автоматически...")
+    print("[setup] может потребоваться sudo; отключить: MEGATOOL_AUTO_INSTALL=0")
+    return run(["sh", str(installer), "--system-only"], cwd=root) == 0
 
 
 def main(
@@ -90,6 +105,9 @@ def main(
 ) -> int:
     """Готовит окружение при необходимости и запускает `python -m megatool`."""
     args = list(sys.argv[1:] if argv is None else argv)
+    install_only = INSTALL_ONLY in args
+    if install_only:
+        args = [arg for arg in args if arg != INSTALL_ONLY]
 
     if sys.version_info < MIN_VERSION:
         print("MegaTool требует Python 3.8 или новее.")
@@ -118,6 +136,9 @@ def main(
             return 1
         print(f"[setup] создаю виртуальное окружение: {venv}")
         code = run([sys.executable, "-m", "venv", str(venv)], cwd=root)
+        if code != 0 and _auto_install_system(root):
+            print("[setup] повторяю создание venv после установки системных пакетов...")
+            code = run([sys.executable, "-m", "venv", str(venv)], cwd=root)
         if code != 0:
             print("[setup] не удалось создать venv. Проверьте Python 3.8+ и модуль venv.")
             print("[setup] " + _setup_hint())
@@ -129,13 +150,21 @@ def main(
 
     if not deps_ready(py, root):
         print("[setup] ставлю 5 runtime-зависимостей (обычно ~15 секунд)...")
-        code = run([
+        pip_cmd = [
             str(py), "-m", "pip", "install", "--disable-pip-version-check",
             "--no-input", "--quiet", "-r", str(root / "requirements.txt"),
-        ], cwd=root)
+        ]
+        code = run(pip_cmd, cwd=root)
+        if code != 0 and _auto_install_system(root):
+            print("[setup] повторяю установку зависимостей...")
+            code = run(pip_cmd, cwd=root)
         if code != 0:
             print("[setup] не удалось установить зависимости (проверьте сеть и pip).")
+            print("[setup] системные пакеты можно доставить: sh install.sh --system-only")
             return code
+    if install_only:
+        print(f"[setup] зависимости готовы: {venv}")
+        return 0
     return run([str(py), "-m", "megatool", *args], cwd=root)
 
 

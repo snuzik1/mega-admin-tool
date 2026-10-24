@@ -231,6 +231,22 @@ python3 megatool-agent.py --host 0.0.0.0 --port 8791 --token СЕКРЕТ
 `Config.export(redact_secrets=True)` оставляет только `token_set` и превью.
 Пустой токен при редактировании означает «оставить прежний».
 
+## Запуск и системные зависимости
+
+`run.sh` — POSIX `sh`, поэтому работает на минимальном Alpine без `bash`.
+Он проверяет наличие Python 3.8+, модулей `venv` и `ensurepip`; если чего-то
+нет, вызывает `install.sh --system-only`. Установщик определяет пакетный
+менеджер (apt-get, dnf/yum, pacman, apk, zypper), использует `sudo` только
+когда запущен не от root и ставит минимальный набор для Python. На Alpine
+дополнительно ставятся `build-base`, `linux-headers` и `python3-dev` для
+сборки psutil.
+
+Python-окружение по-прежнему создаёт только `start.py`: `install.sh` после
+системных пакетов вызывает `start.py --install-only`, а обычный запуск
+создаёт `.venv` и ставит `requirements.txt` при необходимости. Автоустановку
+системных пакетов можно отключить через `MEGATOOL_AUTO_INSTALL=0`; Docker,
+kubectl, Ansible, nginx и SSH-клиент установщик не трогает.
+
 ## Автозапуск
 
 `scripts/install-autostart.sh` пишет пользовательскую службу
@@ -282,7 +298,7 @@ tests/
   test_checks.py           # проверки доступности: HTTP/TCP, валидация, алерты
   test_hosts.py            # серверы: TCP/HTTP, uptime/простой, enabled/disabled
   test_security_hardening.py # заголовки, WS Origin, настройки, импорт, права
-  test_platform_guard.py   # Linux-only, MEGATOOL_VENV, bootstrap и автозапуск
+  test_platform_guard.py   # Linux-only, MEGATOOL_VENV, installer, bootstrap, автозапуск
   test_startup_matrix.py   # 10 профилей запуска Linux
   test_integration.py      # полный набор конфигов, агент, лимит задач, живой uvicorn + WS
 ```

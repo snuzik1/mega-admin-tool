@@ -7,6 +7,20 @@
 
 ### Добавлено
 
+- `install.sh` — автоматическая установка системных предпосылок для запуска:
+  определяет apt-get, dnf/yum, pacman, apk или zypper, использует `sudo`
+  только при необходимости и на Alpine доставляет `build-base`,
+  `linux-headers` и `python3-dev`. Docker, kubectl, Ansible, nginx и SSH
+  остаются необязательными и не устанавливаются.
+- `run.sh` переведён на POSIX `sh` и при отсутствии Python 3.8+/venv сам
+  вызывает `install.sh --system-only`; работает на минимальном Alpine без
+  предустановленного `bash`. Автоустановку можно отключить через
+  `MEGATOOL_AUTO_INSTALL=0`.
+- `start.py --install-only` готовит `.venv` и runtime-зависимости без запуска
+  сервера; при неудачном создании venv или установке pip `start.py` также
+  пытается доставить системные пакеты через `install.sh`.
+- CI проверяет POSIX-синтаксис установщика и запускает smoke в чистом
+  Alpine-контейнере, где `run.sh` устанавливает пакеты сам.
 - Интерфейс перенесён в `megatool/web/` и включён в wheel как package-data;
   CI собирает wheel, проверяет наличие HTML/CSS/JS и импорт `WEB_DIR` из
   установленного пакета.
