@@ -49,6 +49,13 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--log-level", default="info",
                         choices=["critical", "error", "warning", "info", "debug", "trace"])
     parser.add_argument("--reload", action="store_true", help="перезапуск при изменении кода (разработка)")
+    parser.add_argument("--set-password", action="store_true",
+                        help="задать или сменить пароль администратора и выйти")
+    parser.add_argument("--auth-status", action="store_true",
+                        help="показать состояние файла учётных данных и выйти")
+    parser.add_argument("--no-login-prompt", action="store_true",
+                        help="не спрашивать пароль в терминале (для systemd/автоматизации)")
+    parser.add_argument("--auth-file", default="", help="путь к auth.json (MEGATOOL_AUTH_FILE)")
     parser.add_argument("--version", action="store_true", help="показать версию и выйти")
     args = parser.parse_args(argv)
 
@@ -62,6 +69,8 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     if args.home:
         os.environ["MEGATOOL_HOME"] = args.home
+    if args.auth_file:
+        os.environ["MEGATOOL_AUTH_FILE"] = args.auth_file
 
     # Импортируем config только после установки переменной окружения:
     # HOME_DIR вычисляется при импорте модуля.
@@ -73,6 +82,20 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     cfg = Config(Path(args.config).expanduser()) if args.config else Config()
     set_language(cfg.get("ui.language", "ru"))
+
+    from .auth import AuthManager, default_auth_path, ensure_login, set_password_cli, status_text
+
+    auth_manager = AuthManager(default_auth_path(cfg.path))
+    if args.auth_status:
+        print(status_text(auth_manager))
+        return 0 if not auth_manager.error else 1
+    if args.set_password:
+        return set_password_cli(auth_manager)
+
+    if not ensure_login(auth_manager, no_prompt=args.no_login_prompt):
+        return 1
+    print(t("cli.auth", user=auth_manager.username, path=auth_manager.path))
+
     host = args.host or str(cfg.get("server.host", "127.0.0.1"))
     port = args.port or int(cfg.get("server.port", 8787) or 8787)
     if args.host:
@@ -100,13 +123,14 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     if args.reload:
         os.environ.setdefault("MEGATOOL_HOME", str(cfg.path.parent))
+        os.environ.setdefault("MEGATOOL_AUTH_FILE", str(auth_manager.path))
         uvicorn.run("megatool.server:app", host=host, port=port, log_level=args.log_level,
                     reload=True)
         return 0
 
     from .server import create_app
 
-    app = create_app(cfg)
+    app = create_app(cfg, auth=auth_manager)
     try:
         uvicorn.run(app, host=host, port=port, log_level=args.log_level, access_log=False)
     except KeyboardInterrupt:  # pragma: no cover
