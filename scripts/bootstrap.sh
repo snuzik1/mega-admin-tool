@@ -16,8 +16,10 @@ fi
 
 VENV="$(python3 "$ROOT/scripts/venv_path.py" "$ROOT" "${MEGATOOL_VENV:-.venv}")"
 REQ="requirements.txt"
+SECURITY_REQ=""
 if [ "${1:-}" = "--dev" ]; then
   REQ="requirements-dev.txt"
+  SECURITY_REQ="requirements-security.txt"
 fi
 
 if [ ! -x "$VENV/bin/python" ]; then
@@ -40,6 +42,10 @@ fi
 PY="$VENV/bin/python"
 echo "[bootstrap] ставлю зависимости ($REQ)..."
 "$PY" -m pip install --disable-pip-version-check --no-input --quiet -r "$ROOT/$REQ"
+if [ -n "$SECURITY_REQ" ]; then
+  echo "[bootstrap] ставлю сканеры безопасности ($SECURITY_REQ)..."
+  "$PY" -m pip install --disable-pip-version-check --no-input --quiet -r "$ROOT/$SECURITY_REQ"
+fi
 echo "[bootstrap] готово."
 echo "Запуск:        bash run.sh"
 echo "Для разработки: $VENV/bin/python -m pytest -q"

@@ -12,6 +12,8 @@
 
 import ruCommon from "./lang/ru/common.js";
 import enCommon from "./lang/en/common.js";
+import ruAuth from "./lang/ru/auth.js";
+import enAuth from "./lang/en/auth.js";
 import ruNav from "./lang/ru/nav.js";
 import enNav from "./lang/en/nav.js";
 import ruDashboard from "./lang/ru/dashboard.js";
@@ -48,13 +50,13 @@ export const LANG_STORAGE_KEY = "megatool.lang";
 
 export const DICTS = {
   ru: {
-    ...ruCommon, ...ruNav, ...ruDashboard, ...ruContainers, ...ruBalancer,
+    ...ruCommon, ...ruAuth, ...ruNav, ...ruDashboard, ...ruContainers, ...ruBalancer,
     ...ruCatalog, ...ruConfigs, ...ruAnsible, ...ruK8s, ...ruChanges,
     ...ruJobs, ...ruSettings, ...ruBundles, ...ruServers,
     ...ruChecks, ...ruHosts,
   },
   en: {
-    ...enCommon, ...enNav, ...enDashboard, ...enContainers, ...enBalancer,
+    ...enCommon, ...enAuth, ...enNav, ...enDashboard, ...enContainers, ...enBalancer,
     ...enCatalog, ...enConfigs, ...enAnsible, ...enK8s, ...enChanges,
     ...enJobs, ...enSettings, ...enBundles, ...enServers,
     ...enChecks, ...enHosts,

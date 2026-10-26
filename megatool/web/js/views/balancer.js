@@ -253,7 +253,10 @@ export async function render(root) {
       chip(format, { active: format === current, onclick: () => { current = format; load(); } })));
     const load = async (write = false) => {
       mount(content, t("common.loading"));
-      const result = await guard(() => api.get(`/api/balancers/${encodeURIComponent(name)}/export`, { format: current, write }), { quiet: true });
+      const path = `/api/balancers/${encodeURIComponent(name)}/export`;
+      const result = write
+        ? await guard(() => api.post(path, undefined, { format: current }), { quiet: true })
+        : await guard(() => api.get(path, { format: current }), { quiet: true });
       if (!result) return;
       mount(content, result.content || result.error || "");
       if (write && result.path) toast(t("balancer.export.written", { path: result.path }), "success", 7000);

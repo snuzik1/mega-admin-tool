@@ -36,3 +36,14 @@ def test_same_origin_mutation_is_allowed(client):
     )
     assert response.status_code == 200
     assert response.json()["ok"] is True
+
+
+def test_origin_port_must_match_host(client):
+    """Другой порт того же хоста — уже другой origin (CSRF)."""
+    response = client.patch(
+        "/api/settings",
+        json={"ui": {}},
+        headers={"origin": "http://127.0.0.1:9999"},
+    )
+    assert response.status_code == 403
+    assert response.json()["ok"] is False

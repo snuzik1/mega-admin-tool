@@ -42,6 +42,8 @@ const app = {
   currentHash: "#/dashboard",
 };
 
+let authUser = "";
+
 /* --------------------------------------------------------------------- */
 /*  Верхняя панель                                                        */
 /* --------------------------------------------------------------------- */
@@ -80,6 +82,13 @@ function buildTopbar() {
     "aria-keyshortcuts": "F1",
     onclick: () => openHelp(),
   }, "?");
+  const logoutButton = h("button", {
+    type: "button",
+    class: "top-logout",
+    title: authUser ? t("auth.loggedAs", { user: authUser }) : t("auth.logout"),
+    "aria-label": t("auth.logout"),
+    onclick: () => logout(),
+  }, "⎋");
   const langButton = button(getLang().toUpperCase(), () => toggleLang(), { class: "top-lang", title: t("top.lang") });
   const themeButton = button("", () => toggleTheme(), { class: "top-theme", title: t("top.theme") });
   // На узких экранах боковая панель прячется, а эта кнопка её открывает.
@@ -97,11 +106,11 @@ function buildTopbar() {
     h("div", { class: "top-left" }, menuButton,
       h("a", { class: "brand", href: "#/dashboard", title: t("nav.dashboard.title") }, "MEGATOOL"), version),
     h("div", { class: "top-mid" }, host, h("span", { class: "sep" }, "•"), uptime),
-    h("div", { class: "top-right" }, tools.root, alerts, live, helpButton, langButton, themeButton)
+    h("div", { class: "top-right" }, tools.root, alerts, live, helpButton, logoutButton, langButton, themeButton)
   );
   return {
     bar, host, version, uptime, alerts, tools, live,
-    helpButton, langButton, themeButton, menuButton,
+    helpButton, logoutButton, langButton, themeButton, menuButton,
   };
 }
 
@@ -207,6 +216,10 @@ function refreshTopbar(refs) {
   if (refs.helpButton) {
     refs.helpButton.title = t("top.help");
     refs.helpButton.setAttribute("aria-label", t("top.help"));
+  }
+  if (refs.logoutButton) {
+    refs.logoutButton.title = authUser ? t("auth.loggedAs", { user: authUser }) : t("auth.logout");
+    refs.logoutButton.setAttribute("aria-label", t("auth.logout"));
   }
   if (refs.langButton) {
     refs.langButton.textContent = getLang().toUpperCase();
@@ -581,6 +594,143 @@ function startMetrics() {
 }
 
 /* --------------------------------------------------------------------- */
+/*  Вход                                                                  */
+/* --------------------------------------------------------------------- */
+
+async function fetchAuthStatus() {
+  const response = await fetch("/api/auth/status", {
+    headers: { Accept: "application/json" },
+    credentials: "same-origin",
+    cache: "no-store",
+  });
+  const payload = await response.json().catch(() => ({}));
+  return payload.data || payload;
+}
+
+function loginScreen(status = {}) {
+  const error = h("div", { class: "login-error", id: "login-error", role: "alert", hidden: true });
+  const username = h("input", {
+    class: "input",
+    type: "text",
+    name: "username",
+    value: "admin",
+    autocomplete: "username",
+    autocapitalize: "none",
+    autocorrect: "off",
+    readonly: true,
+    "aria-readonly": "true",
+    tabindex: "-1",
+    required: true,
+    spellcheck: "false",
+  });
+  const password = h("input", {
+    class: "input",
+    type: "password",
+    name: "password",
+    autocomplete: "current-password",
+    "aria-describedby": "login-hint login-error",
+    required: true,
+  });
+  const submit = h("button", { class: "btn btn-primary login-submit", type: "submit" }, t("auth.login"));
+
+  if (status.configured === false) {
+    error.hidden = false;
+    error.textContent = t("auth.notConfigured");
+    submit.disabled = true;
+    submit.setAttribute("aria-disabled", "true");
+  }
+
+  const form = h("form", { class: "login-form", autocomplete: "on" },
+    h("label", { class: "field" },
+      h("span", { class: "field-label" }, t("auth.user")), username),
+    h("label", { class: "field" },
+      h("span", { class: "field-label" }, t("auth.password")), password),
+    error,
+    submit);
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (status.configured === false) return;
+    error.hidden = true;
+    submit.disabled = true;
+    submit.setAttribute("aria-busy", "true");
+    submit.textContent = t("auth.loggingIn");
+    try {
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ username: username.value, password: password.value }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.error || `HTTP ${response.status}`);
+      }
+      window.location.reload();
+    } catch (err) {
+      error.textContent = t("auth.error", { error: err.message || String(err) });
+      error.hidden = false;
+      password.value = "";
+      password.focus();
+    } finally {
+      submit.disabled = false;
+      submit.removeAttribute("aria-busy");
+      submit.textContent = t("auth.login");
+    }
+  });
+
+  const screen = h("main", { class: "login-screen" },
+    h("section", { class: "login-card", "aria-labelledby": "login-title" },
+      h("div", { class: "login-brand", "aria-hidden": "true" }, "MEGATOOL"),
+      h("h1", { id: "login-title", class: "login-title" }, t("auth.title")),
+      h("p", { class: "login-subtitle" }, status.configured === false ? t("auth.notConfiguredTitle") : t("auth.subtitle")),
+      form,
+      h("p", { class: "login-hint", id: "login-hint" }, t("auth.hint"))));
+
+  document.body.replaceChildren(screen);
+  document.title = `${t("auth.title")} — MEGATOOL`;
+  setTimeout(() => (status.configured === false ? null : password.focus()), 0);
+}
+
+async function logout() {
+  try {
+    await fetch("/api/auth/logout", {
+      method: "POST",
+      headers: { Accept: "application/json" },
+      credentials: "same-origin",
+    });
+  } catch (error) {
+    /* даже при ошибке показываем экран входа */
+  }
+  window.location.reload();
+}
+
+async function start() {
+  let status = {};
+  try {
+    status = await fetchAuthStatus();
+  } catch (error) {
+    loginScreen({ configured: true });
+    const box = document.querySelector(".login-error");
+    if (box) {
+      box.hidden = false;
+      box.textContent = t("auth.error", { error: error.message || String(error) });
+    }
+    return;
+  }
+  if (!status.authenticated) {
+    loginScreen(status);
+    return;
+  }
+  authUser = status.username || "admin";
+  await boot();
+}
+
+window.addEventListener("megatool:unauthorized", () => {
+  if (!document.querySelector(".login-screen")) window.location.reload();
+});
+
+/* --------------------------------------------------------------------- */
 /*  Запуск                                                                */
 /* --------------------------------------------------------------------- */
 
@@ -722,4 +872,4 @@ async function boot() {
   });
 }
 
-boot();
+start();

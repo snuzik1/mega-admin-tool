@@ -94,6 +94,8 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     if not ensure_login(auth_manager, no_prompt=args.no_login_prompt):
         return 1
+    # Пароль уже превращён в хеш; не оставляем его в окружении сервера и --reload.
+    os.environ.pop("MEGATOOL_ADMIN_PASSWORD", None)
     print(t("cli.auth", user=auth_manager.username, path=auth_manager.path))
 
     host = args.host or str(cfg.get("server.host", "127.0.0.1"))

@@ -47,12 +47,22 @@ python -m pip install -r requirements-dev.txt
 
 ```bash
 .venv/bin/python -m pytest -q
-.venv/bin/python -m ruff check megatool tests
+.venv/bin/python -m pytest --cov=megatool --cov-report=term-missing --cov-fail-under=60
+.venv/bin/python -m ruff check .
 .venv/bin/python scripts/jscheck.py
+.venv/bin/python scripts/startup_matrix.py
 sh -n install.sh
 sh -n run.sh
 sh -n quickstart.sh
 .venv/bin/python -m build --wheel
+```
+
+Для security-проверок:
+
+```bash
+.venv/bin/pip install -r requirements-security.txt
+bash scripts/security_audit.sh
+.venv/bin/python -m bandit -q -r megatool scripts -lll
 ```
 
 Все проверки должны проходить. Если менялись только документы, достаточно
@@ -111,8 +121,10 @@ sh -n quickstart.sh
 - Изменения песочницы файлов, парсеров настроек и запуска команд сопровождайте
   тестами на запрет доступа и обход валидации.
 - Не ослабляйте проверки Host/Origin, CSP, лимиты запросов и права `0600` без
-  серьёзной причины. Встроенной аутентификации в проекте нет — не добавляйте
-  самодельные пароли/сессии без отдельного обсуждения.
+  серьёзной причины. В 0.8.0 используется одна учётная запись `admin`
+  (`megatool/auth.py`); не добавляйте роли, пресеты и дополнительные системы
+  паролей без отдельного обсуждения. Пароль должен оставаться только в виде
+  PBKDF2-хеша в `auth.json`, а не в логах, конфиге или коде.
 
 ## Pull request
 

@@ -388,13 +388,18 @@ def _number_setting(value: Any, default: float, low: float, high: float) -> floa
 @router.get("/health")
 def health(request: Request) -> Dict[str, Any]:
     runtime = rt(request)
+    # Публичный health-check не должен раскрывать домашний путь пользователя.
+    notes = [
+        note for note in runtime.notes
+        if not (isinstance(note, dict) and note.get("key") == "notes.home")
+    ]
     return {
         "ok": True,
         "app": "MegaTool",
         "version": __version__,
         "uptime": round(time.time() - runtime.started_at, 1),
         "monitor": runtime.collector.state.get("running", False),
-        "notes": runtime.notes,
+        "notes": notes,
     }
 
 
@@ -921,9 +926,18 @@ async def balancer_probe(request: Request, name: str) -> Dict[str, Any]:
 
 
 @router.get("/balancers/{name}/export")
-def balancer_export(request: Request, name: str, format: str = "nginx", write: bool = False) -> Dict[str, Any]:
+def balancer_export(request: Request, name: str, format: str = "nginx") -> Dict[str, Any]:
     runtime = rt(request)
-    result = runtime.balancers.export(name, fmt=format, write_file=write)
+    result = runtime.balancers.export(name, fmt=format, write_file=False)
+    audit("balancer.export", target=f"{name} ({format})", ok=bool(result.get("ok")))
+    return result
+
+
+@router.post("/balancers/{name}/export")
+def balancer_export_write(request: Request, name: str, format: str = "nginx") -> Dict[str, Any]:
+    """Запись конфига — только POST: GET не должен иметь побочных эффектов (CSRF)."""
+    runtime = rt(request)
+    result = runtime.balancers.export(name, fmt=format, write_file=True)
     audit("balancer.export", target=f"{name} ({format})", ok=bool(result.get("ok")))
     return result
 

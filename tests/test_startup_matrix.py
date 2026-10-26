@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 from typing import List
@@ -32,6 +33,33 @@ def test_startup_profile(profile):
         assert result["launched"]
 
 
+def test_launch_env_removes_passwords(tmp_path, monkeypatch):
+    root = tmp_path / "MegaTool"
+    root.mkdir()
+    (root / "requirements.txt").write_text("fastapi\n", encoding="utf-8")
+    venv = root / ".venv"
+    py = start.venv_python(venv)
+    py.parent.mkdir(parents=True)
+    py.write_text("", encoding="utf-8")
+
+    seen = {}
+
+    def fake_run(cmd, cwd=None, quiet=False, env=None):
+        if env is not None:
+            seen["env"] = env
+        return 0
+
+    monkeypatch.setattr(start, "run", fake_run)
+    monkeypatch.setenv("MEGATOOL_ADMIN_PASSWORD", "admin-secret")
+    monkeypatch.setenv("MEGATOOL_NEW_PASSWORD", "new-secret")
+
+    assert start.main(["--no-browser"], root=root, venv=venv) == 0
+    assert "MEGATOOL_ADMIN_PASSWORD" not in os.environ
+    assert "MEGATOOL_NEW_PASSWORD" not in os.environ
+    assert seen["env"]["MEGATOOL_ADMIN_PASSWORD"] == "admin-secret"
+    assert seen["env"]["MEGATOOL_NEW_PASSWORD"] == "new-secret"
+
+
 def test_venv_python_layout() -> None:
     assert start.venv_python(Path("venv")).parts[-2:] == ("bin", "python")
 
@@ -44,7 +72,7 @@ def test_relative_venv_is_relative_to_project() -> None:
 def test_help_and_version_skip_setup(monkeypatch, tmp_path: Path, flag: str) -> None:
     calls: List[List[str]] = []
 
-    def fake_run(cmd, cwd=None, quiet=False):  # type: ignore[no-untyped-def]
+    def fake_run(cmd, cwd=None, quiet=False, env=None):  # type: ignore[no-untyped-def]
         calls.append([str(item) for item in cmd])
         return 0
 
@@ -61,7 +89,7 @@ def test_help_and_version_skip_setup(monkeypatch, tmp_path: Path, flag: str) -> 
 def test_old_python_is_rejected(monkeypatch, tmp_path: Path, capsys) -> None:
     calls: List[List[str]] = []
 
-    def fake_run(cmd, cwd=None, quiet=False):  # type: ignore[no-untyped-def]
+    def fake_run(cmd, cwd=None, quiet=False, env=None):  # type: ignore[no-untyped-def]
         calls.append([str(item) for item in cmd])
         return 0
 
@@ -76,7 +104,7 @@ def test_old_python_is_rejected(monkeypatch, tmp_path: Path, capsys) -> None:
 
 
 def test_venv_failure_has_linux_hint(monkeypatch, tmp_path: Path, capsys) -> None:
-    def fake_run(cmd, cwd=None, quiet=False):  # type: ignore[no-untyped-def]
+    def fake_run(cmd, cwd=None, quiet=False, env=None):  # type: ignore[no-untyped-def]
         return 1
 
     monkeypatch.setattr(start, "run", fake_run)

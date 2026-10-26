@@ -17,7 +17,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import List, Optional, Sequence
+from typing import Dict, List, Optional, Sequence
 
 ROOT = Path(__file__).resolve().parent
 
@@ -53,7 +53,12 @@ def venv_has_files(venv: Path) -> bool:
         return False
 
 
-def run(cmd: Sequence[str], cwd: Optional[Path] = None, quiet: bool = False) -> int:
+def run(
+    cmd: Sequence[str],
+    cwd: Optional[Path] = None,
+    quiet: bool = False,
+    env: Optional[Dict[str, str]] = None,
+) -> int:
     """Запускает команду без shell и возвращает код выхода."""
     output = subprocess.DEVNULL if quiet else None
     return subprocess.call(
@@ -61,6 +66,7 @@ def run(cmd: Sequence[str], cwd: Optional[Path] = None, quiet: bool = False) -> 
         cwd=str(cwd or ROOT),
         stdout=output,
         stderr=output,
+        env=env,
     )
 
 
@@ -165,7 +171,12 @@ def main(
     if install_only:
         print(f"[setup] зависимости готовы: {venv}")
         return 0
-    return run([str(py), "-m", "megatool", *args], cwd=root)
+    # Пароль нужен дочернему процессу для первого создания auth.json, но не
+    # должен оставаться в окружении родителя, пока работает сервер.
+    launch_env = os.environ.copy()
+    for name in ("MEGATOOL_ADMIN_PASSWORD", "MEGATOOL_NEW_PASSWORD"):
+        os.environ.pop(name, None)
+    return run([str(py), "-m", "megatool", *args], cwd=root, env=launch_env)
 
 
 if __name__ == "__main__":

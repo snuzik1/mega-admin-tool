@@ -13,6 +13,7 @@ import re
 import secrets
 import shutil
 import subprocess
+import tempfile
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -277,20 +278,45 @@ def write_text(path: Union[str, os.PathLike], text: str, mode: Optional[int] = N
 
 
 def atomic_write(path: Union[str, os.PathLike], text: str, mode: Optional[int] = None) -> None:
-    """Пишет файл через временный, чтобы не оставить «половину» при сбое."""
+    """Пишет файл через временный, чтобы не оставить «половину» при сбое.
+
+    Временный файл уникален: параллельные записи в один target (например,
+    статус задачи из потока-исполнителя и из cancel) не перетирают tmp-файл
+    друг друга. Побеждает последняя атомарная замена.
+    """
     target = Path(path)
     ensure_dir(target.parent)
-    tmp = target.with_name(target.name + ".tmp-megatool")
-    write_text(tmp, text)
-    if mode is not None:
+    final_mode = mode
+    if final_mode is None:
         try:
-            os.chmod(tmp, mode)
+            final_mode = target.stat().st_mode & 0o777
+        except OSError:
+            final_mode = 0o644
+    fd, tmp_name = tempfile.mkstemp(prefix=".tmp-megatool-", dir=str(target.parent))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
+            fd = -1
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        try:
+            os.chmod(tmp_name, final_mode)
         except OSError:
             pass
-    os.replace(tmp, target)
-    if mode is not None:
+        os.replace(tmp_name, target)
+        if mode is not None:
+            try:
+                os.chmod(target, mode)
+            except OSError:
+                pass
+    finally:
+        if fd >= 0:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
         try:
-            os.chmod(target, mode)
+            os.unlink(tmp_name)
         except OSError:
             pass
 

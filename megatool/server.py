@@ -23,10 +23,12 @@ from . import APP_DESCRIPTION, APP_NAME, __version__
 from .agents import MAX_AGENTS, normalize_url
 from .api import router
 from .api_agents import router as agents_router
+from .api_auth import router as auth_router
 from .api_bundles import router as bundles_router
 from .api_checks import router as checks_router
 from .api_hosts import router as hosts_router
 from .api_servers import router as servers_router
+from .auth import COOKIE_NAME, AuthManager, default_auth_path
 from .config import Config, HOME_DIR
 from .i18n import set_language, t
 from .jobs import JobLimitError
@@ -41,6 +43,13 @@ LOOPBACK_HOSTNAMES = {"127.0.0.1", "localhost", "::1", "[::1]"}
 #: Максимальный размер тела запроса (файлы конфигов и импорт настроек — небольшие).
 MAX_BODY_BYTES = 25 * 1024 * 1024
 
+#: Ручки, доступные без сессии: проверка живости и сам вход.
+PUBLIC_API_PATHS = frozenset({
+    "/api/health",
+    "/api/auth/status",
+    "/api/auth/login",
+})
+
 
 def _host_header_name(value: str) -> str:
     """Вытаскивает имя хоста из заголовка Host (без порта, понимает IPv6)."""
@@ -50,6 +59,23 @@ def _host_header_name(value: str) -> str:
     if value.count(":") == 1:  # host:port
         return value.rsplit(":", 1)[0]
     return value
+
+
+def _host_header_port(value: str) -> Optional[int]:
+    """Возвращает порт из Host; None — порт не указан, -1 — некорректный."""
+    value = (value or "").strip()
+    if not value:
+        return None
+    try:
+        return urlsplit(f"//{value}").port
+    except ValueError:
+        return -1
+
+
+def _effective_port(scheme: str, port: Optional[int]) -> int:
+    if port is not None:
+        return port
+    return 443 if scheme in ("https", "wss") else 80
 
 
 def _allowed_hostnames(cfg: Config) -> Set[str]:
@@ -76,29 +102,47 @@ def _host_allowed(host_header: str, cfg: Config) -> bool:
     return name in _allowed_hostnames(cfg)
 
 
-def _origin_allowed(origin: str, cfg: Config) -> bool:
-    """Проверяет Origin у изменяющих запросов (когда браузер его присылает)."""
+def _origin_allowed(origin: str, host_header: str) -> bool:
+    """Проверяет Origin у изменяющих запросов (когда браузер его присылает).
+
+    Origin должен совпадать с фактическим Host (включая порт), иначе другое
+    локальное приложение на ``localhost`` могло бы выполнить CSRF-запрос.
+    """
     try:
         parts = urlsplit(origin)
+        origin_port = parts.port
     except ValueError:
         return False
-    name = (parts.hostname or "").lower()
-    if not name:
+    scheme = parts.scheme.lower()
+    if scheme not in ("http", "https", "ws", "wss"):
         return False
-    bind_host = str(cfg.get("server.host", "127.0.0.1") or "127.0.0.1")
-    if not is_loopback(bind_host):
-        return True
-    return name in _allowed_hostnames(cfg)
+    name = (parts.hostname or "").lower()
+    host_name = _host_header_name(host_header).lower()
+    if not name or not host_name or name != host_name:
+        return False
+    host_port = _host_header_port(host_header)
+    if host_port == -1:
+        return False
+    if _effective_port(scheme, origin_port) != _effective_port(scheme, host_port):
+        return False
+    return True
 
 
-def _ws_origin_allowed(websocket: WebSocket, cfg: Config) -> bool:
+def _ws_origin_allowed(websocket: WebSocket) -> bool:
     """Не даём чужим сайтам читать WebSocket-потоки (CSWSH).
 
     Браузер всегда присылает Origin при открытии сокета. Не-браузерные
     клиенты могут его не присылать — для них остаётся проверка Host.
     """
     origin = websocket.headers.get("origin", "")
-    return not origin or _origin_allowed(origin, cfg)
+    return not origin or _origin_allowed(origin, websocket.headers.get("host", ""))
+
+
+def _ws_authorized(websocket: WebSocket, auth: AuthManager) -> bool:
+    """Проверяет сессию до accept: иначе поток метрик доступен без входа."""
+    if not auth.configured:
+        return False
+    return auth.authenticate(websocket.cookies.get(COOKIE_NAME))
 
 
 #: Заголовки безопасности для всех HTTP-ответов (включая статику и ошибки).
@@ -132,9 +176,10 @@ class NoCacheStaticFiles(StaticFiles):
         return response
 
 
-def create_app(cfg: Optional[Config] = None) -> FastAPI:
+def create_app(cfg: Optional[Config] = None, auth: Optional[AuthManager] = None) -> FastAPI:
     cfg = cfg or Config()
     set_language(cfg.get("ui.language", "ru"))
+    auth_manager = auth or AuthManager(default_auth_path(cfg.path))
     runtime = build_runtime(cfg)
 
     @asynccontextmanager
@@ -164,11 +209,16 @@ def create_app(cfg: Optional[Config] = None) -> FastAPI:
         lifespan=lifespan,
     )
     app.state.rt = runtime
+    app.state.auth = auth_manager
 
     def _secure(response, path: str):
         """Добавляет заголовки безопасности (включая ответы-отказы)."""
         for name, value in SECURITY_HEADERS.items():
             response.headers.setdefault(name, value)
+        if path.startswith("/api"):
+            # API может содержать конфиги, ключи и результаты команд:
+            # не разрешаем браузеру и прокси кэшировать ответы.
+            response.headers.setdefault("Cache-Control", "no-store")
         # Swagger UI грузит скрипты и стили с CDN, поэтому для страницы
         # документации политика чуть мягче; на само приложение это не влияет.
         if path.startswith("/api/docs"):
@@ -195,7 +245,7 @@ def create_app(cfg: Optional[Config] = None) -> FastAPI:
                     "error": t("server.badHost", host=_host_header_name(host_header) or "?"),
                 }), path)
             origin = request.headers.get("origin", "")
-            if origin and request.method not in ("GET", "HEAD", "OPTIONS") and not _origin_allowed(origin, cfg):
+            if origin and request.method not in ("GET", "HEAD", "OPTIONS") and not _origin_allowed(origin, host_header):
                 return _secure(JSONResponse(status_code=403, content={
                     "ok": False,
                     "error": t("server.badOrigin", origin=origin),
@@ -209,9 +259,25 @@ def create_app(cfg: Optional[Config] = None) -> FastAPI:
                     "ok": False,
                     "error": t("server.tooLarge", mb=MAX_BODY_BYTES // (1024 * 1024)),
                 }), path)
+
+            normalized = path.rstrip("/") or "/"
+            if normalized not in PUBLIC_API_PATHS:
+                if not auth_manager.configured:
+                    return _secure(JSONResponse(status_code=503, content={
+                        "ok": False,
+                        "error": t("auth.notConfiguredShort"),
+                    }), path)
+                if not auth_manager.authenticate(request.cookies.get(COOKIE_NAME)):
+                    return _secure(JSONResponse(
+                        status_code=401,
+                        content={"ok": False, "error": t("auth.required")},
+                        headers={"WWW-Authenticate": "Cookie"},
+                    ), path)
+                request.state.auth_user = auth_manager.username
         return _secure(await call_next(request), path)
 
     app.include_router(router)
+    app.include_router(auth_router)
     app.include_router(agents_router)
     app.include_router(bundles_router)
     app.include_router(servers_router)
@@ -227,9 +293,13 @@ def create_app(cfg: Optional[Config] = None) -> FastAPI:
     # ------------------------------------------------------------------ #
     @app.websocket("/api/ws/metrics")
     async def ws_metrics(websocket: WebSocket) -> None:
-        if not _host_allowed(websocket.headers.get("host", ""), cfg) or not _ws_origin_allowed(websocket, cfg):
+        if not _host_allowed(websocket.headers.get("host", ""), cfg) or not _ws_origin_allowed(websocket):
             await websocket.close(code=4403)
             return
+        if not _ws_authorized(websocket, auth_manager):
+            await websocket.close(code=4401)
+            return
+        session_token = websocket.cookies.get(COOKIE_NAME)
         await websocket.accept()
         channel: queue.Queue = queue.Queue(maxsize=64)
         runtime.collector.subscribe(channel)
@@ -243,8 +313,14 @@ def create_app(cfg: Optional[Config] = None) -> FastAPI:
                 "alerts": runtime.collector.active_alerts(),
             })
             while True:
+                if not auth_manager.authenticate(session_token):
+                    await websocket.close(code=4401)
+                    break
                 payload = await asyncio.get_running_loop().run_in_executor(
                     None, functools.partial(_safe_get, channel, 2.0))
+                if not auth_manager.authenticate(session_token):
+                    await websocket.close(code=4401)
+                    break
                 if payload is None:
                     payload = {"type": "ping", "ts": iso()}
                 await websocket.send_json(payload)
@@ -261,9 +337,13 @@ def create_app(cfg: Optional[Config] = None) -> FastAPI:
     # ------------------------------------------------------------------ #
     @app.websocket("/api/ws/jobs/{job_id}")
     async def ws_job(websocket: WebSocket, job_id: str) -> None:
-        if not _host_allowed(websocket.headers.get("host", ""), cfg) or not _ws_origin_allowed(websocket, cfg):
+        if not _host_allowed(websocket.headers.get("host", ""), cfg) or not _ws_origin_allowed(websocket):
             await websocket.close(code=4403)
             return
+        if not _ws_authorized(websocket, auth_manager):
+            await websocket.close(code=4401)
+            return
+        session_token = websocket.cookies.get(COOKIE_NAME)
         job = runtime.jobs.get(job_id)
         await websocket.accept()
         if not job:
@@ -274,8 +354,14 @@ def create_app(cfg: Optional[Config] = None) -> FastAPI:
         try:
             await websocket.send_json({"type": "job", "job": job.to_dict()})
             while True:
+                if not auth_manager.authenticate(session_token):
+                    await websocket.close(code=4401)
+                    break
                 item = await asyncio.get_running_loop().run_in_executor(
                     None, functools.partial(_safe_get, channel, 2.0))
+                if not auth_manager.authenticate(session_token):
+                    await websocket.close(code=4401)
+                    break
                 if item is None:
                     await websocket.send_json({"type": "status", "job": job.to_dict(include_cmd=False)})
                     if job.status != "running":

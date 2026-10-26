@@ -27,10 +27,30 @@ def test_websocket_foreign_origin_is_rejected(client):
     assert failure.value.code == 4403
 
 
+def test_websocket_other_port_origin_is_rejected(client):
+    cookie = "; ".join(f"{key}={value}" for key, value in client.cookies.items())
+    with pytest.raises(WebSocketDisconnect) as failure:
+        with client.websocket_connect(
+            "/api/ws/metrics",
+            headers={
+                "host": "127.0.0.1:8799",
+                "origin": "http://127.0.0.1:9999",
+                "cookie": cookie,
+            },
+        ):
+            pass
+    assert failure.value.code == 4403
+
+
 def test_websocket_same_origin_is_allowed(client):
+    cookie = "; ".join(f"{key}={value}" for key, value in client.cookies.items())
     with client.websocket_connect(
         "/api/ws/metrics",
-        headers={"host": "127.0.0.1:8799", "origin": "http://127.0.0.1:8799"},
+        headers={
+            "host": "127.0.0.1:8799",
+            "origin": "http://127.0.0.1:8799",
+            "cookie": cookie,
+        },
     ) as socket:
         hello = socket.receive_json()
         assert hello["type"] == "hello"

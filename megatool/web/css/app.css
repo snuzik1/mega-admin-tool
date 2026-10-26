@@ -947,3 +947,110 @@ body.nav-locked { overflow: hidden; }
   .top-tools { display: none; }
   .target-row { grid-template-columns: 1fr; }
 }
+
+/* ------------------------------------------------------------------ */
+/*  Вход                                                               */
+/* ------------------------------------------------------------------ */
+
+.login-screen {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--bg);
+}
+
+.login-card {
+  width: 100%;
+  max-width: 420px;
+  padding: 32px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  box-shadow: 6px 6px 0 var(--shadow);
+}
+
+.login-brand {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  line-height: 1;
+}
+
+.login-title {
+  margin: 26px 0 6px;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.login-subtitle,
+.login-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.login-hint {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 22px;
+}
+
+.login-form .field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.login-form .field-label {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.login-form .input {
+  width: 100%;
+}
+
+.login-form .input[readonly] {
+  background: var(--panel-2);
+  color: var(--muted);
+  cursor: default;
+}
+
+.login-submit {
+  width: 100%;
+  margin-top: 4px;
+}
+
+.login-error {
+  padding: 10px 12px;
+  border-left: 3px solid var(--border);
+  background: var(--panel-2);
+  color: var(--fg);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.top-logout {
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  line-height: 1;
+  padding: 6px 8px;
+}
+
+.top-logout:hover,
+.top-logout:focus-visible {
+  color: var(--fg);
+  border-color: var(--border);
+}

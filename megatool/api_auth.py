@@ -7,6 +7,7 @@ Origin для изменяющих запросов в server.py. Сессии �
 
 from __future__ import annotations
 
+import json
 import os
 from typing import Any, Dict
 from urllib.parse import parse_qs
@@ -14,11 +15,18 @@ from urllib.parse import parse_qs
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import JSONResponse
 
-from .auth import COOKIE_NAME, SESSION_TTL_SECONDS, AuthManager
+from .auth import COOKIE_NAME, MAX_PASSWORD_BYTES, SESSION_TTL_SECONDS, AuthManager
 from .changes import audit
 from .i18n import t
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+#: Тело логина небольшое; ограничение действует и для chunked-запросов.
+MAX_LOGIN_BODY_BYTES = 64 * 1024
+
+
+class _PayloadTooLarge(Exception):
+    """Тело входа превышает MAX_LOGIN_BODY_BYTES."""
 
 
 def _manager(request: Request) -> AuthManager:
@@ -35,18 +43,42 @@ def _secure_cookie(request: Request) -> bool:
     return request.url.scheme == "https"
 
 
+async def _read_body(request: Request) -> bytes:
+    """Читает тело входа с жёстким лимитом, не доверяя Content-Length."""
+    length = request.headers.get("content-length")
+    if length:
+        try:
+            if int(length) > MAX_LOGIN_BODY_BYTES:
+                raise _PayloadTooLarge()
+        except ValueError:
+            pass
+    chunks = []
+    total = 0
+    async for chunk in request.stream():
+        total += len(chunk)
+        if total > MAX_LOGIN_BODY_BYTES:
+            raise _PayloadTooLarge()
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
 async def _payload(request: Request) -> Dict[str, Any]:
     """JSON или application/x-www-form-urlencoded (удобно для curl)."""
     content_type = request.headers.get("content-type", "").lower()
     if "application/json" in content_type:
         try:
-            body = await request.json()
+            raw = await _read_body(request)
+            body = json.loads(raw.decode("utf-8"))
+        except _PayloadTooLarge:
+            raise
         except Exception:
             return {}
         return body if isinstance(body, dict) else {}
     try:
-        raw = (await request.body()).decode("utf-8", errors="replace")
+        raw = (await _read_body(request)).decode("utf-8", errors="replace")
         parsed = parse_qs(raw, keep_blank_values=True)
+    except _PayloadTooLarge:
+        raise
     except Exception:
         return {}
     return {key: values[0] if values else "" for key, values in parsed.items()}
@@ -55,11 +87,12 @@ async def _payload(request: Request) -> Dict[str, Any]:
 @router.get("/status")
 async def auth_status(request: Request) -> Dict[str, Any]:
     manager = _manager(request)
-    authenticated = bool(manager.configured and manager.authenticate(request.cookies.get(COOKIE_NAME)))
+    configured = manager.configured
+    authenticated = bool(configured and manager.authenticate(request.cookies.get(COOKIE_NAME)))
     return {
         "ok": True,
         "data": {
-            "configured": manager.configured,
+            "configured": configured,
             "authenticated": authenticated,
             "username": manager.username if authenticated else "",
             "auth_required": True,
@@ -73,7 +106,7 @@ async def auth_login(request: Request, response: Response):
     if not manager.configured:
         return JSONResponse(
             status_code=503,
-            content={"ok": False, "error": t("auth.notConfigured", path=manager.path)},
+            content={"ok": False, "error": t("auth.notConfiguredShort")},
         )
 
     key = _client(request)
@@ -85,13 +118,25 @@ async def auth_login(request: Request, response: Response):
             headers={"Retry-After": str(retry)},
         )
 
-    payload = await _payload(request)
+    try:
+        payload = await _payload(request)
+    except _PayloadTooLarge:
+        manager.limiter.fail(key)
+        audit("auth.login", detail=f"ip={key} reason=body-too-large", ok=False)
+        return JSONResponse(
+            status_code=413,
+            content={"ok": False, "error": t("auth.payloadTooLarge")},
+        )
     username = str(payload.get("username") or manager.username)
     password = str(payload.get("password") or "")
+    password_too_long = len(password) > MAX_PASSWORD_BYTES or (
+        len(password.encode("utf-8", errors="ignore")) > MAX_PASSWORD_BYTES
+    )
 
-    if not manager.verify(username, password):
+    if len(username) > 256 or password_too_long or not manager.verify(username, password):
         manager.limiter.fail(key)
-        audit("auth.login", target=username, detail=f"ip={key}", ok=False)
+        # Даже заведомо длинное имя не должно раздувать журнал аудита.
+        audit("auth.login", target=username[:128], detail=f"ip={key}", ok=False)
         return JSONResponse(
             status_code=401,
             content={"ok": False, "error": t("auth.badCredentials")},

@@ -9,6 +9,7 @@ DATA = {
         "modeLocal": "Local",
         "modeExternal": "External address",
         "settings": "Settings:       {path}",
+        "auth": "Access:         {user} (file {path})",
         "stopHint": "Stop:           {keys}",
         "networkWarning": "WARNING: the app is reachable over the network — restrict access with a firewall.",
         "stoppedByUser": "Stopped by user",

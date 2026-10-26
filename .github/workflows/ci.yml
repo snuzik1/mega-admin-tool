@@ -43,7 +43,12 @@ jobs:
       - name: Линт (ruff)
         run: ruff check .
 
+      - name: Тесты (pytest, coverage)
+        if: matrix.python == '3.12'
+        run: pytest --cov=megatool --cov-report=term-missing --cov-fail-under=60
+
       - name: Тесты (pytest)
+        if: matrix.python != '3.12'
         run: pytest
 
       - name: Проверка запуска
@@ -63,6 +68,9 @@ jobs:
           test -x scripts/uninstall-autostart.sh
           test -x scripts/smoke_start.sh
           test -x scripts/startup_matrix.py
+          test -x scripts/backup.py
+          test -x scripts/restore.py
+          test -x scripts/security_audit.sh
           test -x scripts/megatool-agent.py
           test -x scripts/venv_path.py
 
@@ -101,6 +109,28 @@ jobs:
       - name: Синтаксис JavaScript
         run: python scripts/jscheck.py
 
+  security:
+    name: Security scan / Python 3.12
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Установка сканеров
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-security.txt
+
+      - name: Bandit (только high)
+        run: python -m bandit -q -r megatool scripts -lll
+
+      - name: pip-audit
+        run: bash scripts/security_audit.sh
+
   package:
     name: Wheel / Python 3.12
     runs-on: ubuntu-latest
@@ -129,10 +159,14 @@ jobs:
               names = set(zf.namelist())
 
           required = {
+              "megatool/auth.py",
+              "megatool/api_auth.py",
               "megatool/web/index.html",
               "megatool/web/css/app.css",
               "megatool/web/js/app.js",
               "megatool/web/js/views/settings.js",
+              "megatool/web/js/lang/ru/auth.js",
+              "megatool/web/js/lang/en/auth.js",
           }
           missing = required - names
           assert not missing, f"В wheel нет: {sorted(missing)}"
@@ -160,8 +194,15 @@ jobs:
               "run.sh",
               "start.py",
               "requirements.txt",
+              "requirements-security.txt",
               "bootstrap.sh",
               "venv_path.py",
+              "backup.py",
+              "restore.py",
+              "security_audit.sh",
+              "auth.py",
+              "api_auth.py",
+              "Dockerfile",
               "ARCHITECTURE.md",
               "index.html",
           }
@@ -184,6 +225,19 @@ jobs:
           assert (WEB_DIR / "index.html").is_file(), WEB_DIR
           print(f"WEB_DIR: {WEB_DIR}")
           PY
+
+  container:
+    name: Container / Python 3.12
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Сборка образа
+        run: docker build -t megatool:ci .
+
+      - name: Проверка версии в образе
+        run: docker run --rm megatool:ci --version
 
   alpine:
     name: Alpine 3.20 / Python 3.12

@@ -127,6 +127,25 @@ def make_record(username: str, password: str) -> Dict[str, Any]:
     }
 
 
+def _check_dir_security(directory: Path) -> None:
+    """Каталог с секретом не должен быть доступен группе/остальным."""
+    if os.name != "posix":
+        return
+    try:
+        info = directory.stat()
+    except FileNotFoundError:
+        return
+    except OSError as exc:
+        raise AuthError(t("auth.fileUnreadable", path=directory, error=exc))
+    if not stat.S_ISDIR(info.st_mode):
+        raise AuthError(t("auth.dirNotDir", path=directory))
+    if info.st_uid != os.geteuid():
+        raise AuthError(t("auth.dirOwner", path=directory))
+    mode = stat.S_IMODE(info.st_mode)
+    if mode & 0o077:
+        raise AuthError(t("auth.dirPermissions", path=directory, mode=oct(mode)))
+
+
 def _check_file_security(path: Path) -> None:
     """Не даём читать чужой/слишком открытый файл с секретом."""
     if path.is_symlink():
@@ -143,9 +162,9 @@ def _check_file_security(path: Path) -> None:
         return
     if info.st_mode & 0o077:
         raise AuthError(t("auth.filePermissions", path=path, mode=oct(info.st_mode & 0o777)))
-    euid = os.geteuid()
-    if euid != 0 and info.st_uid != euid:
+    if info.st_uid != os.geteuid():
         raise AuthError(t("auth.fileOwner", path=path))
+    _check_dir_security(path.parent)
 
 
 def load_record(path: Path) -> Optional[Dict[str, Any]]:
@@ -184,15 +203,18 @@ def save_record(path: Path, record: Dict[str, Any]) -> None:
     """Атомарно пишет auth.json с правами 0600 и каталогом 0700."""
     path = Path(path)
     parent = path.parent
+    created = not parent.exists()
     try:
         parent.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
         raise AuthError(t("auth.fileWrite", path=parent, error=exc))
     if os.name == "posix":
-        try:
-            os.chmod(parent, 0o700)
-        except OSError:
-            pass
+        if created:
+            try:
+                os.chmod(parent, 0o700)
+            except OSError as exc:
+                raise AuthError(t("auth.fileWrite", path=parent, error=exc))
+        _check_dir_security(parent)
     if path.exists():
         _check_file_security(path)
 
@@ -337,27 +359,84 @@ class AuthManager:
         self._lock = threading.RLock()
         self._record: Optional[Dict[str, Any]] = None
         self._error = ""
+        self._fingerprint: Any = None
         self.reload()
+
+    def _signature(self) -> Any:
+        """Отпечаток файла и каталога, чтобы замечать изменения на ходу.
+
+        Сравнения содержимого здесь нет: хеш файла читается только после
+        изменения mtime/размера/inode/прав. Это позволяет ``--set-password``
+        и восстановлению из резервной копии применяться без перезапуска
+        сервера, не читая auth.json на каждый запрос.
+        """
+
+        def info(path: Path) -> Any:
+            try:
+                item = path.stat()
+            except FileNotFoundError:
+                return None
+            except OSError as exc:
+                return ("error", type(exc).__name__)
+            return (
+                getattr(item, "st_mtime_ns", 0),
+                getattr(item, "st_ctime_ns", 0),
+                item.st_size,
+                getattr(item, "st_ino", 0),
+                stat.S_IMODE(item.st_mode),
+                getattr(item, "st_uid", -1),
+            )
+
+        try:
+            file_link = self.path.is_symlink()
+        except OSError:
+            file_link = False
+        try:
+            parent_link = self.path.parent.is_symlink()
+        except OSError:
+            parent_link = False
+        return file_link, info(self.path), parent_link, info(self.path.parent)
+
+    def _reload_locked(self) -> bool:
+        signature = self._signature()
+        previous = self._record
+        try:
+            record = load_record(self.path)
+            error = ""
+        except AuthError as exc:
+            record = None
+            error = str(exc)
+        self._record = record
+        self._error = error
+        self._fingerprint = signature
+        if record is not None:
+            self.username = str(record.get("username") or self.username)
+        if previous != record:
+            # Пароль/файл изменился или исчез: старые cookie больше недействительны.
+            self.sessions.revoke_all()
+        return record is not None
 
     def reload(self) -> bool:
         with self._lock:
-            try:
-                self._record = load_record(self.path)
-                self._error = ""
-            except AuthError as exc:
-                self._record = None
-                self._error = str(exc)
-            return self._record is not None
+            return self._reload_locked()
+
+    def _refresh_if_changed(self) -> None:
+        with self._lock:
+            if self._signature() != self._fingerprint:
+                self._reload_locked()
 
     @property
     def configured(self) -> bool:
+        self._refresh_if_changed()
         return self._record is not None
 
     @property
     def error(self) -> str:
+        self._refresh_if_changed()
         return self._error
 
     def verify(self, username: str, password: str) -> bool:
+        self._refresh_if_changed()
         with self._lock:
             record = dict(self._record) if self._record else None
         if not record:
@@ -368,6 +447,7 @@ class AuthManager:
         return bool(user_ok and password_ok)
 
     def authenticate(self, token: Optional[str]) -> bool:
+        self._refresh_if_changed()
         return self.sessions.validate(token)
 
     def set_password(self, password: str, username: Optional[str] = None) -> None:
@@ -377,6 +457,7 @@ class AuthManager:
             self._record = record
             self._error = ""
             self.username = str(record["username"])
+            self._fingerprint = self._signature()
             self.sessions.revoke_all()
 
     def status(self) -> Dict[str, Any]:
@@ -468,6 +549,7 @@ def ensure_login(manager: AuthManager, no_prompt: bool = False) -> bool:
     * файл есть + нет TTY / --no-login-prompt — пропускаем терминальный
       вопрос, но веб-вход всё равно обязателен.
     """
+    no_prompt = no_prompt or os.environ.get("MEGATOOL_NO_LOGIN_PROMPT", "") == "1"
     if manager.error:
         print(t("auth.fileError", path=manager.path, error=manager.error))
         return False

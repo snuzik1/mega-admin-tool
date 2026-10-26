@@ -324,7 +324,9 @@ class Balancer:
         if self.algorithm == "least_conn":
             return min(candidates, key=lambda t: (t.active + 1) / max(1, t.weight))
         if self.algorithm == "ip_hash":
-            digest = hashlib.sha1(client_ip.encode("utf-8", "ignore")).hexdigest()
+            # SHA-256 вместо SHA-1: стабильное распределение, но без
+            # криптографически сломанного алгоритма (Bandit B324).
+            digest = hashlib.sha256(client_ip.encode("utf-8", "ignore")).hexdigest()
             index = int(digest[:8], 16) % len(candidates)
             return candidates[index]
         if self.algorithm == "random":

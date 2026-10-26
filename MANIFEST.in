@@ -3,5 +3,6 @@ recursive-include scripts *.py *.sh
 recursive-include tests *.py
 recursive-include docs *.md
 include start.py run.sh install.sh quickstart.sh
-include requirements.txt requirements-dev.txt
+include Dockerfile .dockerignore
+include requirements.txt requirements-dev.txt requirements-security.txt
 include CHANGELOG.md CONTRIBUTING.md SECURITY.md CODE_OF_CONDUCT.md

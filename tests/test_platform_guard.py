@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def _no_run(calls: List[List[str]]):
-    def fake_run(cmd, cwd=None, quiet=False):  # type: ignore[no-untyped-def]
+    def fake_run(cmd, cwd=None, quiet=False, env=None):  # type: ignore[no-untyped-def]
         calls.append([str(item) for item in cmd])
         return 0
 
@@ -245,7 +245,7 @@ def test_start_auto_installs_system_deps_on_venv_failure(monkeypatch, tmp_path: 
     venv = tmp_path / ".venv"
     py = start.venv_python(venv)
 
-    def fake_run(cmd, cwd=None, quiet=False):  # type: ignore[no-untyped-def]
+    def fake_run(cmd, cwd=None, quiet=False, env=None):  # type: ignore[no-untyped-def]
         nonlocal attempts
         argv = [str(item) for item in cmd]
         calls.append(argv)
@@ -280,7 +280,7 @@ def test_start_retries_pip_after_system_install(monkeypatch, tmp_path: Path) -> 
     py.parent.mkdir(parents=True)
     py.write_text("", encoding="utf-8")
 
-    def fake_run(cmd, cwd=None, quiet=False):  # type: ignore[no-untyped-def]
+    def fake_run(cmd, cwd=None, quiet=False, env=None):  # type: ignore[no-untyped-def]
         nonlocal pip_calls
         argv = [str(item) for item in cmd]
         calls.append(argv)
@@ -309,7 +309,7 @@ def test_start_auto_install_can_be_disabled(monkeypatch, tmp_path: Path) -> None
     installer = tmp_path / "install.sh"
     installer.write_text("#!/bin/sh\n", encoding="utf-8")
 
-    def fake_run(cmd, cwd=None, quiet=False):  # type: ignore[no-untyped-def]
+    def fake_run(cmd, cwd=None, quiet=False, env=None):  # type: ignore[no-untyped-def]
         calls.append([str(item) for item in cmd])
         return 1
 

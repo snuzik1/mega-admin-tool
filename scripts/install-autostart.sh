@@ -50,6 +50,14 @@ if [ ! -x "$PYTHON" ]; then
   exit 1
 fi
 
+MEGATOOL_HOME_EFFECTIVE="${MEGATOOL_HOME:-$HOME/.megatool}"
+AUTH_FILE="${MEGATOOL_AUTH_FILE:-$MEGATOOL_HOME_EFFECTIVE/auth.json}"
+if [ ! -f "$AUTH_FILE" ]; then
+  echo "Файл учётных данных не найден: $AUTH_FILE" >&2
+  echo "Сначала запустите bash run.sh в терминале и задайте пароль администратора." >&2
+  exit 1
+fi
+
 mkdir -p "$UNIT_DIR"
 cat > "$UNIT_DIR/$UNIT_NAME" <<EOF
 [Unit]
@@ -60,10 +68,12 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=$ROOT
-ExecStart="$PYTHON" -m megatool --no-browser
+WorkingDirectory="$ROOT"
+ExecStart="$PYTHON" -m megatool --no-browser --no-login-prompt
 Environment=PYTHONIOENCODING=utf-8
 Environment=PYTHONUNBUFFERED=1
+Environment="MEGATOOL_HOME=$MEGATOOL_HOME_EFFECTIVE"
+Environment="MEGATOOL_AUTH_FILE=$AUTH_FILE"
 Restart=on-failure
 RestartSec=3
 # Мягкое завершение: uvicorn успевает закрыть задачи и балансировщики.
@@ -83,7 +93,7 @@ if [ "$LINGER" = "1" ]; then
   fi
 fi
 
-PORT="$(sed -n 's/.*"port"[[:space:]]*:[[:space:]]*\([0-9]*\).*/\1/p' "$HOME/.megatool/config.json" 2>/dev/null | head -n1 || true)"
+PORT="$(sed -n 's/.*"port"[[:space:]]*:[[:space:]]*\([0-9]*\).*/\1/p' "$MEGATOOL_HOME_EFFECTIVE/config.json" 2>/dev/null | head -n1 || true)"
 PORT="${PORT:-8787}"
 
 echo ""

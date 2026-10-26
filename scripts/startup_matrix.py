@@ -115,7 +115,7 @@ PROFILES: List[Dict[str, object]] = [
 def _fake_run(calls: List[List[str]], py: Path, profile: Dict[str, object]):
     """Эмулирует venv/pip/python и записывает фактические команды."""
 
-    def runner(cmd, cwd=None, quiet=False):  # type: ignore[no-untyped-def]
+    def runner(cmd, cwd=None, quiet=False, env=None):  # type: ignore[no-untyped-def]
         argv = [str(item) for item in cmd]
         calls.append(argv)
         if len(argv) >= 3 and argv[1:3] == ["-m", "venv"]:

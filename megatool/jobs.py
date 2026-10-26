@@ -50,6 +50,7 @@ class Job:
     lines: deque[Dict[str, Any]] = field(default_factory=lambda: deque(maxlen=MAX_LINES))
     log_path: Optional[Path] = None
     _proc: Optional[subprocess.Popen] = None
+    _cancel_event: threading.Event = field(default_factory=threading.Event)
     _subs: List[queue.Queue] = field(default_factory=list)
     _lock: threading.RLock = field(default_factory=threading.RLock)
 
@@ -217,6 +218,11 @@ class JobManager:
     # ------------------------------------------------------------------ #
     def _execute(self, job: Job, env: Optional[Dict[str, str]],
                  stdin_text: Optional[str] = None) -> None:
+        if job._cancel_event.is_set():
+            job.status = "cancelled"
+            job.finished = time.time()
+            self._persist(job)
+            return
         job.started = time.time()
         job.status = "running"
         self._persist(job)
@@ -246,14 +252,14 @@ class JobManager:
                 start_new_session=True,
             )
         except FileNotFoundError:
-            job.status = "failed"
+            job.status = "cancelled" if job._cancel_event.is_set() else "failed"
             job.error = t("jobs.programNotFound", name=job.cmd[0])
             job.finished = time.time()
             job.add_line(f"! {job.error}", "error")
             self._persist(job)
             return
         except OSError as exc:
-            job.status = "failed"
+            job.status = "cancelled" if job._cancel_event.is_set() else "failed"
             job.error = str(exc)
             job.finished = time.time()
             job.add_line(f"! {exc}", "error")
@@ -261,6 +267,9 @@ class JobManager:
             return
 
         job._proc = proc
+        if job._cancel_event.is_set():
+            # Отмена пришла, пока Popen ещё не вернул процесс.
+            self._kill_tree(proc)
         if stdin_text is not None and proc.stdin is not None:
             writer = threading.Thread(target=self._stdin_writer, args=(proc.stdin, stdin_text),
                                       daemon=True, name=f"megatool-job-{job.id}-stdin")
@@ -277,8 +286,8 @@ class JobManager:
 
         job.exit_code = code
         job.finished = time.time()
-        if job.status == "cancelled":
-            pass
+        if job._cancel_event.is_set() or job.status == "cancelled":
+            job.status = "cancelled"
         elif code == 0:
             job.status = "success"
         else:
@@ -319,11 +328,17 @@ class JobManager:
         job = self.get(job_id)
         if not job:
             return {"ok": False, "error": t("jobs.notFound")}
-        if job.status != "running" or job._proc is None:
+        if job.status not in ("pending", "running"):
             return {"ok": False, "error": t("jobs.notRunning", status=job.status)}
+        job._cancel_event.set()
         job.status = "cancelled"
         job.add_line(t("jobs.cancelRequested"), "system")
-        self._kill_tree(job._proc)
+        if job._proc is not None:
+            self._kill_tree(job._proc)
+        else:
+            # Поток ещё не успел создать процесс: он увидит событие и выйдет.
+            job.finished = time.time()
+            self._persist(job)
         return {"ok": True}
 
     def _kill_tree(self, proc: subprocess.Popen) -> None:
@@ -392,7 +407,7 @@ class JobManager:
         with self._lock:
             jobs = list(self._jobs.values())
         for job in jobs:
-            if job.status == "running":
+            if job.status in ("pending", "running"):
                 self.cancel(job.id)
                 count += 1
         return count

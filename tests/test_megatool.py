@@ -249,6 +249,24 @@ def test_balancer_lifecycle_and_weights(client):
     assert client.delete("/api/balancers/test-lb").json()["ok"] is True
 
 
+def test_balancer_export_writes_only_through_post(client, monkeypatch):
+    calls = []
+
+    def fake_export(name, fmt="nginx", write_file=False):
+        calls.append((name, fmt, write_file))
+        return {"ok": True, "content": "preview"}
+
+    monkeypatch.setattr(client.app.state.rt.balancers, "export", fake_export)
+
+    preview = client.get("/api/balancers/demo/export", params={"format": "nginx", "write": "true"}).json()
+    assert preview["ok"] is True
+    assert calls[-1][2] is False
+
+    written = client.post("/api/balancers/demo/export", params={"format": "haproxy"}).json()
+    assert written["ok"] is True
+    assert calls[-1] == ("demo", "haproxy", True)
+
+
 def test_balancer_proxy_and_health():
     """Поднимаем два настоящих HTTP-бэкенда и гоняем через балансировщик реальные запросы.
 
@@ -436,7 +454,7 @@ def test_jobs_run_and_log(client, home):
 
     jobs = JobManager(home / "runs-test")
     job = jobs.submit("проверка", [sys.executable, "-c", "print('привет из задачи')"])
-    for _ in range(60):
+    for _ in range(300):
         if job.status != "running" and job.status != "pending":
             break
         _time.sleep(0.1)

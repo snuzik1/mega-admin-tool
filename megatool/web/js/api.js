@@ -45,6 +45,9 @@ async function request(method, path, { params, body, timeoutMs } = {}) {
   }
   if (!response.ok) {
     const message = payload && payload.error ? payload.error : `HTTP ${response.status}`;
+    if (response.status === 401 && !String(path).includes("/auth/login")) {
+      window.dispatchEvent(new Event("megatool:unauthorized"));
+    }
     throw new ApiError(message, response.status, payload);
   }
   return payload;
@@ -105,8 +108,14 @@ export function openWS(path, { onMessage, onOpen, onClose } = {}) {
       }
       if (onMessage) onMessage(payload);
     };
-    socket.onclose = () => {
+    socket.onclose = (event) => {
       client.ready = false;
+      if (event && event.code === 4401) {
+        closed = true;
+        if (ping) clearInterval(ping);
+        window.dispatchEvent(new Event("megatool:unauthorized"));
+        return;
+      }
       if (onClose) onClose();
       schedule();
     };

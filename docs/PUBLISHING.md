@@ -8,19 +8,24 @@ MegaTool.
 - `LICENSE` (MIT), `README.md`, `SECURITY.md`, `CONTRIBUTING.md`;
 - `.gitignore`, `.gitattributes`, `.editorconfig`;
 - GitHub Actions: `.github/workflows/ci.yml` (Ubuntu, Python 3.8/3.12/3.14,
-  проверка wheel и Alpine);
-- package-data: интерфейс `megatool/web/` входит в wheel;
+  coverage, Bandit, pip-audit, wheel/sdist, Docker и Alpine);
+- package-data: интерфейс `megatool/web/` входит в wheel; модули `auth.py` и
+  `api_auth.py` — обычные модули пакета;
 - `quickstart.sh` скачивает архив и запускает MegaTool одной командой;
 - `install.sh` входит в sdist и автоматически ставит системные предпосылки;
+- одноразовый `admin` с PBKDF2-хешем в `auth.json` (`0600`) и веб-входом;
+- `scripts/backup.py` и `scripts/restore.py` для резервных копий;
+- `Dockerfile` с непривилегированным пользователем;
 - шаблоны Issue и Pull Request, Dependabot;
-- `docs/GUIDE.md` и `docs/ARCHITECTURE.md`;
-- `CHANGELOG.md` для первого релиза.
+- `docs/GUIDE.md`, `docs/ARCHITECTURE.md`, `docs/OPERATIONS.md`;
+- `CHANGELOG.md` для релиза.
 
 Перед публикацией **проверьте**, что в репозиторий не попали:
 
 - `.venv/`, `.pytest_cache/`, `.ruff_cache/`, `__pycache__/`;
 - `~/.megatool/`, `config.json`, журналы и дампы;
 - токены, пароли, SSH-ключи и файлы `.env`;
+- `auth.json` (даже без открытого пароля он содержит хеш) и резервные архивы;
 - личные абсолютные пути вида `/home/...`.
 
 ## 2. Репозиторий и проверка
@@ -40,9 +45,13 @@ git status --short
 
 ```bash
 .venv/bin/python -m pytest -q
+.venv/bin/python -m pytest --cov=megatool --cov-report=term-missing --cov-fail-under=60
 .venv/bin/python -m ruff check .
 .venv/bin/python scripts/jscheck.py
 .venv/bin/python scripts/startup_matrix.py
+.venv/bin/pip install -r requirements-security.txt
+bash scripts/security_audit.sh
+.venv/bin/python -m bandit -q -r megatool scripts -lll
 .venv/bin/python -m build
 ```
 
@@ -62,6 +71,13 @@ print(WEB_DIR)
 PY
 ```
 
+Контейнер (если Docker доступен локально):
+
+```bash
+docker build -t megatool:0.8.0 .
+docker run --rm megatool:0.8.0 --version
+```
+
 ## 3. Опубликуйте main
 
 ```bash
@@ -77,7 +93,7 @@ git push -u origin main
 `pyproject.toml` — раздел `[project.urls]` с Homepage, Repository, Issues и
 Changelog. При смене владельца или имени репозитория обновите их согласованно.
 
-Релиз 0.7.0 публикуется через GitHub Release. Начиная с этой версии
+Релиз 0.8.0 публикуется через GitHub Release. Начиная с 0.7.0
 `megatool/web/` входит в wheel как package-data, поэтому пакет можно
 публиковать на PyPI после проверки из предыдущего раздела: соберите wheel,
 установите его в чистое окружение и убедитесь, что `WEB_DIR/index.html`
@@ -106,12 +122,12 @@ Changelog. При смене владельца или имени репозит
 2. Создайте тег и GitHub Release:
 
 ```bash
-git tag -a v0.7.0 -m "MegaTool 0.7.0"
-git push origin v0.7.0
+git tag -a v0.8.0 -m "MegaTool 0.8.0"
+git push origin v0.8.0
 ```
 
-3. В GitHub → **Releases → Draft a new release** выберите тег `v0.7.0`,
-   вставьте раздел `0.7.0` из [CHANGELOG.md](../CHANGELOG.md) и опубликуйте.
+3. В GitHub → **Releases → Draft a new release** выберите тег `v0.8.0`,
+   вставьте раздел `0.8.0` из [CHANGELOG.md](../CHANGELOG.md) и опубликуйте.
 
 ## 7. Если секрет уже попал в репозиторий
 

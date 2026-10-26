@@ -198,29 +198,51 @@ def test_job_limit(tmp_path):
         manager.cancel(first.id)
         manager.cancel_all()
 
-    # После завершения слот освобождается.
-    deadline = time.time() + 5
+    # После завершения слот освобождается. Запас времени увеличен: под
+    # coverage запуск процесса и чтение потоков заметно медленнее.
+    deadline = time.time() + 15
     while manager.active_count() and time.time() < deadline:
         time.sleep(0.05)
+    assert manager.active_count() == 0
     second = manager.submit("третья", [sys.executable, "-c", "pass"])
     assert second.id
+
+
+def test_pending_job_cancel_is_immediate(tmp_path):
+    import sys
+
+    from megatool.jobs import JobManager
+
+    manager = JobManager(tmp_path / "runs", keep=5, max_active=1)
+    job = manager.submit("долгая", [sys.executable, "-c", "import time; time.sleep(30)"])
+    result = manager.cancel(job.id)
+    assert result == {"ok": True}
+    assert job.status == "cancelled"
+    deadline = time.time() + 10
+    while manager.active_count() and time.time() < deadline:
+        time.sleep(0.05)
+    assert manager.active_count() == 0
 
 
 # --------------------------------------------------------------------------- #
 #  Живой uvicorn + WebSocket
 # --------------------------------------------------------------------------- #
 
-def test_live_server_http_and_websocket():
+def test_live_server_http_and_websocket(tmp_path: Path):
     import uvicorn
 
+    from megatool.auth import AuthManager
     from megatool.server import create_app
+
+    manager = AuthManager(tmp_path / "auth.json")
+    manager.set_password("live-server-password")
 
     probe = socket.socket()
     probe.bind(("127.0.0.1", 0))
     port = probe.getsockname()[1]
     probe.close()
 
-    config = uvicorn.Config(create_app(), host="127.0.0.1", port=port,
+    config = uvicorn.Config(create_app(auth=manager), host="127.0.0.1", port=port,
                             log_level="error", lifespan="on", access_log=False)
     server = uvicorn.Server(config)
     thread = threading.Thread(target=server.run, daemon=True)
@@ -235,12 +257,24 @@ def test_live_server_http_and_websocket():
             health = json.loads(response.read().decode("utf-8"))
         assert health["ok"] is True
 
+        login_data = json.dumps({"username": "admin", "password": "live-server-password"}).encode("utf-8")
+        login = urllib.request.Request(
+            f"http://127.0.0.1:{port}/api/auth/login",
+            data=login_data,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(login, timeout=5) as response:
+            cookie = response.headers["Set-Cookie"].split(";", 1)[0]
+        assert cookie.startswith("megatool_session=")
+
         import websockets
 
         async def hello() -> dict:
             async with websockets.connect(
                 f"ws://127.0.0.1:{port}/api/ws/metrics",
                 open_timeout=5,
+                extra_headers={"Cookie": cookie},
             ) as socket_conn:
                 message = await asyncio.wait_for(socket_conn.recv(), timeout=8)
                 return json.loads(message)
