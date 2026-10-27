@@ -18,7 +18,7 @@ usage() {
   cat <<'EOF'
 Использование: sh install.sh [--system-only] [--dry-run]
 
-  --system-only  установить только системные пакеты Python/venv/pip
+  --system-only  установить только системные пакеты Python/venv/pip и TLS
   --dry-run      показать выбранный пакетный менеджер и пакеты, но не менять систему
   -h, --help     показать эту справку
 
@@ -53,22 +53,22 @@ PACKAGES=""
 detect_manager() {
   if command -v apt-get >/dev/null 2>&1; then
     MANAGER="apt-get"
-    PACKAGES="python3 python3-venv python3-pip bash"
+    PACKAGES="python3 python3-venv python3-pip bash openssl ca-certificates"
   elif command -v dnf >/dev/null 2>&1; then
     MANAGER="dnf"
-    PACKAGES="python3 python3-pip bash"
+    PACKAGES="python3 python3-pip bash openssl ca-certificates"
   elif command -v yum >/dev/null 2>&1; then
     MANAGER="yum"
-    PACKAGES="python3 python3-pip bash"
+    PACKAGES="python3 python3-pip bash openssl ca-certificates"
   elif command -v pacman >/dev/null 2>&1; then
     MANAGER="pacman"
-    PACKAGES="python python-pip bash"
+    PACKAGES="python python-pip bash openssl ca-certificates"
   elif command -v apk >/dev/null 2>&1; then
     MANAGER="apk"
-    PACKAGES="python3 py3-pip bash build-base linux-headers python3-dev"
+    PACKAGES="python3 py3-pip bash build-base linux-headers python3-dev openssl ca-certificates"
   elif command -v zypper >/dev/null 2>&1; then
     MANAGER="zypper"
-    PACKAGES="python3 python3-pip bash"
+    PACKAGES="python3 python3-pip bash openssl ca-certificates"
   else
     echo "[install] не удалось определить пакетный менеджер." >&2
     echo "[install] установите Python 3.8+, venv и pip вручную." >&2

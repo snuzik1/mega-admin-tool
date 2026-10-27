@@ -5,7 +5,7 @@
 ```
 браузер (интерфейс без сборки)          Python-процесс (один порт)
 ┌──────────────────────────┐            ┌────────────────────────────────────┐
-│ megatool/web/index.html  │  HTTP/WS   │ FastAPI: /api/* + статика web/     │
+│ megatool/web/index.html  │ HTTP(S)/WS │ FastAPI: /api/* + статика web/     │
 │ 14 разделов, canvas-граф.│◄──────────►│ runtime: collector, checks, hosts, │
 │ тема, плотность, RU/EN,  │            │ containers, balancers, catalog,    │
 │ мобильное меню           │            │ bundles, servers(SSH), agents, k8s,│
@@ -24,12 +24,13 @@
 
 | Файл | Ответственность |
 | --- | --- |
-| `__main__.py` | CLI (`--host/--port/--home/--config/--reload`, `--set-password/--auth-status/--no-login-prompt/--auth-file`), терминальный вход, баннер, запуск uvicorn |
-| `server.py` | сборка FastAPI: `/api`, WebSocket, статика (без кэша), проверка `Host`/`Origin`, проверка сессии, лимит тела запроса и заголовки безопасности в одном middleware |
+| `__main__.py` | CLI (`--host/--port/--home/--config/--reload`, `--set-password/--auth-status/--no-login-prompt/--auth-file`, `--setup`, `--tls-cert/--tls-key`, `--allow-insecure-remote`), терминальный вход, мастер доступа, политика внешнего bind, баннер, запуск uvicorn с TLS |
+| `server.py` | сборка FastAPI: `/api`, WebSocket, статика (без кэша), проверка `Host`/`Origin`, проверка сессии, лимит тела запроса и заголовки безопасности (HSTS для HTTPS) в одном middleware |
+| `tls.py` | встроенный TLS: пути сертификата/ключа, проверка прав/владельца/симлинков, загрузка PEM, SHA-256 отпечаток и срок действия, SAN, генерация самоподписанного сертификата, политика внешнего bind |
 | `auth.py` | PBKDF2-хеш и атомарная запись `auth.json` (`0600`), проверка владельца/прав, сессии в памяти, лимит попыток, терминальная настройка/вход, `--set-password` |
 | `api_auth.py` | `/api/auth/status`, `/api/auth/login`, `/api/auth/logout`; cookie, аудит, JSON/urlencoded |
 | `runtime.py` | `build_runtime`: настройки + все сервисы; язык, ротация аудита, «заметки» о нехватке инструментов |
-| `config.py` | `DEFAULT_CONFIG`, пути `MEGATOOL_HOME` (`auth.json`, `config.json`, `hosts_state.json`, `apps/`, `bundles/`, `configs/`, `runs/`, `logs/`), миграция `~/.megapet`, вырезание устаревшего `auth`, кэш разбора точечных путей |
+| `config.py` | `DEFAULT_CONFIG`, пути `MEGATOOL_HOME` (`auth.json`, `config.json`, `hosts_state.json`, `apps/`, `bundles/`, `configs/`, `tls/`, `runs/`, `logs/`), миграция `~/.megapet`, вырезание устаревшего `auth`, кэш разбора точечных путей |
 | `collector.py` | опрос psutil, кольцевая история, алерты; тяжёлые обходы процессов кэшируются (число потоков 15 с, список 2 с), топ процессов собирается в два прохода |
 | `checks.py` | проверки доступности: HTTP(S)/TCP/TLS, фоновый поток, история 40 точек, сводка и алерты |
 | `api_checks.py` | маршруты `/api/checks` (чтение, сохранение, ручной запуск) |
@@ -51,7 +52,7 @@
 | `k8s.py` | kubectl: обзор (параллельные запросы), узлы/поды/сервисы/события, действия, apply; кэш с single-flight |
 | `ansible.py` | инвентарь (парсер), плейбуки, запуск, ping/check |
 | `jobs.py` | менеджер долгих операций: лимит одновременных задач (`jobs.max_active`), живые логи, отмена, история, stdin для скриптов |
-| `security.py` | определение loopback-адресов (`is_loopback`) для проверок `Host`/`Origin` |
+| `security.py` | loopback-адреса, локальные IP/имена и нормализация host для проверок `Host`/`Origin` и SAN сертификата |
 | `i18n.py` | серверная локализация: `t()`, `set_language()`, автосборка словарей из `lang/`, кэш шаблонов, `audit()` |
 | `lang/ru_<модуль>.py`, `lang/en_<модуль>.py` | словари серверных сообщений (`DATA`), по файлу на язык и модуль |
 | `api.py` | все HTTP-маршруты `/api/*` (тонкий слой над сервисами) |
@@ -78,7 +79,10 @@
   `Host` и портом), лимит тела, наличие сессии для защищённых `/api/*` и
   добавляет заголовки безопасности; WebSocket отдельно проверяет `Host`/`Origin`
   (CSWSH) и cookie, закрывая соединение кодом `4401` без сессии. Публичны только
-  health, статус входа и сам вход.
+  health, статус входа и сам вход. При `server.tls.enabled` uvicorn сам
+  принимает HTTPS; `tls.py` заранее проверяет пару сертификат/ключ, `server.py`
+  добавляет HSTS, а `__main__.py` не даёт открыть внешний порт без TLS без
+  явного разрешения.
 * **Живые задачи** — `jobs` запускает команду, пишет stdout/stderr построчно и
   раздаёт их через `/api/ws/jobs/{id}`; `runs/` хранит историю. Опциональный
   `stdin_text` пишется из отдельного потока (используется для SSH-скриптов).
@@ -193,7 +197,8 @@
   `auth.json` — ошибка запуска (fail closed); веб-вход остаётся обязательным.
 * Веб-сессии — случайные токены в памяти процесса, TTL 12 часов, до 32 сессий.
   Cookie `megatool_session`: `HttpOnly`, `SameSite=Strict`, `Path=/`,
-  `Secure` при HTTPS/`MEGATOOL_SECURE_COOKIE=1`.
+  `Secure` при встроенном HTTPS; за внешним TLS-прокси включайте
+  `MEGATOOL_SECURE_COOKIE=1`.
 * Без сессии защищённые `/api/*` возвращают `401`, WebSocket закрывается кодом
   `4401`. Публичны `/api/health`, `/api/auth/status`, `/api/auth/login`.
   Ответы API помечаются `Cache-Control: no-store`.
@@ -202,14 +207,24 @@
 * По умолчанию сервер слушает только `127.0.0.1`; HTTP-middleware
   `security_guard` проверяет `Host` (защита от DNS-rebinding), `Origin` у
   изменяющих запросов, лимит тела 25 МБ и добавляет заголовки безопасности.
-  Для loopback разрешены только loopback-имена и `server.allowed_hosts`.
+  Проверка Host работает при любом bind; разрешены loopback, имя машины,
+  локальные IP, адрес привязки и `server.allowed_hosts`.
 * WebSocket-маршруты отдельно проверяют `Host`/`Origin` (защита от CSWSH) и
   сессию.
+* Внешний bind (`0.0.0.0`/`::`) без TLS отклоняется при запуске, в
+  `PATCH /api/settings` и при импорте настроек. TLS включается в
+  `server.tls.enabled`; `tls.py` проверяет PEM, ключ `0600`, владельца,
+  каталог ключа `0700` и отсутствие symlink. Uvicorn получает
+  `ssl_certfile`/`ssl_keyfile`;
+  HTTPS-ответы получают HSTS. Исключение — явный
+  `--allow-insecure-remote`/`MEGATOOL_ALLOW_INSECURE_REMOTE=1`.
 * `Config` вырезает устаревший ключ `auth` при загрузке, обновлении и экспорте;
   `PATCH /api/settings` и импорт принимают только известные секции, поэтому
   вернуть старую систему пользователей через API нельзя.
-* Для удалённого доступа используйте VPN, SSH-туннель или обратный прокси с TLS;
-  порт MegaTool не стоит публиковать напрямую.
+* Для удалённого доступа предпочтителен встроенный HTTPS (мастер `--setup`,
+  настройки или собственные `--tls-cert`/`--tls-key`); дополнительно
+  ограничивайте порт firewall/VPN и не публикуйте его в интернет без
+  необходимости.
 
 Токены удалённых агентов — отдельный механизм: `agents.py` отправляет
 `Authorization: Bearer`/`X-MegaTool-Agent-Token` агенту, а `Config.export`
@@ -261,9 +276,9 @@ python3 megatool-agent.py --host 0.0.0.0 --port 8791 --token СЕКРЕТ
 Он проверяет наличие Python 3.8+, модулей `venv` и `ensurepip`; если чего-то
 нет, вызывает `install.sh --system-only`. Установщик определяет пакетный
 менеджер (apt-get, dnf/yum, pacman, apk, zypper), использует `sudo` только
-когда запущен не от root и ставит минимальный набор для Python. На Alpine
-дополнительно ставятся `build-base`, `linux-headers` и `python3-dev` для
-сборки psutil.
+когда запущен не от root и ставит минимальный набор для Python, а также
+`openssl`/`ca-certificates` для встроенного TLS. На Alpine дополнительно
+ставятся `build-base`, `linux-headers` и `python3-dev` для сборки psutil.
 
 Python-окружение по-прежнему создаёт только `start.py`: `install.sh` после
 системных пакетов вызывает `start.py --install-only`, а обычный запуск
@@ -285,17 +300,20 @@ kubectl, Ansible, nginx и SSH-клиент установщик не трога
 ## Безопасность
 
 * по умолчанию только `127.0.0.1`; встроенная аутентификация требует вход в
-  браузере, но сетевой доступ всё равно должен ограничиваться VPN,
-  SSH-туннелем или обратным прокси с TLS;
+  браузере, а внешний bind без TLS запрещён. Рекомендуется встроенный HTTPS
+  (`--setup`/настройки/`--tls-cert`) плюс ограничение порта firewall/VPN;
 * `auth.json` — `0600`, каталог `0700`, PBKDF2-SHA256 (600 000 итераций);
   проверяются владелец, права, регулярность и отсутствие symlink;
+* TLS-ключ — `0600`, каталог `tls/` — `0700`, владелец — пользователь
+  MegaTool, symlink отклоняется; сертификат проверяется загрузкой в
+  `ssl.SSLContext`; HTTPS получает HSTS;
 * сессии — случайные токены в памяти (12 часов), cookie `HttpOnly` +
   `SameSite=Strict`; без сессии API — 401, WebSocket — 4401; 5 неудачных
   попыток входа за 60 секунд; вход/выход в аудите;
-* защита от DNS-rebinding: пока сервер слушает loopback, `/api/*` и WebSocket
-  проверяют `Host` (421) и `Origin` у изменяющих запросов (403), а WebSocket —
-  ещё и `Origin` при открытии (4403); дополнительные имена — в
-  `server.allowed_hosts`;
+* защита от DNS-rebinding: `/api/*` и WebSocket проверяют `Host` (421) и
+  `Origin` у изменяющих запросов (403), а WebSocket — ещё и `Origin` при
+  открытии (4403). Проверка не отключается при внешнем bind; дополнительные
+  имена — в `server.allowed_hosts`;
 * все ответы получают CSP (без внешних скриптов; отдельное послабление только
   для Swagger UI), `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy`,
   `Permissions-Policy` и COOP/CORP;
@@ -330,6 +348,8 @@ tests/
   test_checks.py           # проверки доступности: HTTP/TCP, валидация, алерты
   test_hosts.py            # серверы: TCP/HTTP, uptime/простой, enabled/disabled
   test_security_hardening.py # заголовки, WS Origin, настройки, импорт, права
+  test_tls.py              # PEM/права/SAN/отпечаток, генерация, политика bind
+  test_remote_access.py    # внешний bind, API TLS, Host allowlist, HSTS
   test_platform_guard.py   # Linux-only, MEGATOOL_VENV, installer, bootstrap, автозапуск
   test_startup_matrix.py   # 10 профилей запуска Linux
   test_integration.py      # полный набор конфигов, агент, лимит задач, живой uvicorn + WS

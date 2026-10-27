@@ -75,7 +75,13 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "host": "127.0.0.1",
         "port": 8787,
         "open_browser": True,
-        "allowed_hosts": [],     # доп. имена Host для обратного прокси (по умолчанию только loopback)
+        "allowed_hosts": [],     # доп. имена Host; локальные имена и IP добавляются сами
+        "allow_insecure_remote": False,  # только явное решение администратора
+        "tls": {
+            "enabled": False,
+            "certfile": "",      # пусто = MEGATOOL_HOME/tls/server.crt
+            "keyfile": "",       # пусто = MEGATOOL_HOME/tls/server.key
+        },
     },
     "audit": {
         "max_mb": 5,             # порог ротации журнала действий

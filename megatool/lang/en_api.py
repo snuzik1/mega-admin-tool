@@ -16,6 +16,8 @@ DATA = {
         "nothingToUpdate": "nothing to update",
         "portMustBeNumber": "port must be a number",
         "portOutOfRange": "port is out of range 1..65535",
+        "tlsInvalid": "TLS is not configured: {error}",
+        "tlsGenerateFailed": "Could not generate the certificate: {error}",
         "badBase64": "could not decode file content (base64 expected)",
         "fileTooLarge": "file is larger than 8 MB",
         "defaultFilename": "file",

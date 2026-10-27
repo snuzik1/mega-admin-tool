@@ -33,7 +33,7 @@ from .config import Config, HOME_DIR
 from .i18n import set_language, t
 from .jobs import JobLimitError
 from .runtime import build_runtime
-from .security import is_loopback
+from .security import is_wildcard, local_hostnames
 from .util import iso
 
 WEB_DIR = Path(__file__).resolve().parent / "web"
@@ -79,23 +79,31 @@ def _effective_port(scheme: str, port: Optional[int]) -> int:
 
 
 def _allowed_hostnames(cfg: Config) -> Set[str]:
-    names = {str(item).strip().lower() for item in (cfg.get("server.allowed_hosts", []) or []) if str(item).strip()}
+    """Имена Host, которые могут обращаться к приложению.
+
+    Кроме явного списка добавляются loopback, имя машины и все локальные
+    IP. Это позволяет открыть MegaTool по адресу ``192.168.x.x`` без
+    ручной настройки, но не разрешает произвольный DNS-rebinding.
+    """
+    names = {
+        str(item).strip().lower()
+        for item in (cfg.get("server.allowed_hosts", []) or [])
+        if str(item).strip()
+    }
     names |= LOOPBACK_HOSTNAMES
+    names |= set(local_hostnames())
     bind_host = str(cfg.get("server.host", "127.0.0.1") or "127.0.0.1").lower()
-    if bind_host:
+    if bind_host and not is_wildcard(bind_host):
         names.add(bind_host)
     return names
 
 
 def _host_allowed(host_header: str, cfg: Config) -> bool:
-    """Анти-DNS-rebinding: при прослушивании только loopback принимаем запросы
-    лишь с loopback-имён Host (плюс явно разрешённые server.allowed_hosts).
+    """Анти-DNS-rebinding для API и WebSocket.
 
-    Если сервер сознательно открыт наружу (host не loopback), ограничение снимается.
+    Проверка работает и при внешнем bind: недостаточно открыть порт, нужно
+    обращаться по имени/IP, которое действительно принадлежит этой машине.
     """
-    bind_host = str(cfg.get("server.host", "127.0.0.1") or "127.0.0.1")
-    if not is_loopback(bind_host):
-        return True
     name = _host_header_name(host_header).lower()
     if not name:
         return False
@@ -211,10 +219,12 @@ def create_app(cfg: Optional[Config] = None, auth: Optional[AuthManager] = None)
     app.state.rt = runtime
     app.state.auth = auth_manager
 
-    def _secure(response, path: str):
+    def _secure(response, path: str, https: bool = False):
         """Добавляет заголовки безопасности (включая ответы-отказы)."""
         for name, value in SECURITY_HEADERS.items():
             response.headers.setdefault(name, value)
+        if https:
+            response.headers.setdefault("Strict-Transport-Security", "max-age=31536000")
         if path.startswith("/api"):
             # API может содержать конфиги, ключи и результаты команд:
             # не разрешаем браузеру и прокси кэшировать ответы.
@@ -237,19 +247,20 @@ def create_app(cfg: Optional[Config] = None, auth: Optional[AuthManager] = None)
     @app.middleware("http")
     async def security_guard(request, call_next):
         path = request.url.path
+        https = request.url.scheme == "https"
         if path.startswith("/api"):
             host_header = request.headers.get("host", "")
             if not _host_allowed(host_header, cfg):
                 return _secure(JSONResponse(status_code=421, content={
                     "ok": False,
                     "error": t("server.badHost", host=_host_header_name(host_header) or "?"),
-                }), path)
+                }), path, https)
             origin = request.headers.get("origin", "")
             if origin and request.method not in ("GET", "HEAD", "OPTIONS") and not _origin_allowed(origin, host_header):
                 return _secure(JSONResponse(status_code=403, content={
                     "ok": False,
                     "error": t("server.badOrigin", origin=origin),
-                }), path)
+                }), path, https)
             try:
                 length = int(request.headers.get("content-length", "0") or 0)
             except ValueError:
@@ -258,7 +269,7 @@ def create_app(cfg: Optional[Config] = None, auth: Optional[AuthManager] = None)
                 return _secure(JSONResponse(status_code=413, content={
                     "ok": False,
                     "error": t("server.tooLarge", mb=MAX_BODY_BYTES // (1024 * 1024)),
-                }), path)
+                }), path, https)
 
             normalized = path.rstrip("/") or "/"
             if normalized not in PUBLIC_API_PATHS:
@@ -266,15 +277,15 @@ def create_app(cfg: Optional[Config] = None, auth: Optional[AuthManager] = None)
                     return _secure(JSONResponse(status_code=503, content={
                         "ok": False,
                         "error": t("auth.notConfiguredShort"),
-                    }), path)
+                    }), path, https)
                 if not auth_manager.authenticate(request.cookies.get(COOKIE_NAME)):
                     return _secure(JSONResponse(
                         status_code=401,
                         content={"ok": False, "error": t("auth.required")},
                         headers={"WWW-Authenticate": "Cookie"},
-                    ), path)
+                    ), path, https)
                 request.state.auth_user = auth_manager.username
-        return _secure(await call_next(request), path)
+        return _secure(await call_next(request), path, https)
 
     app.include_router(router)
     app.include_router(auth_router)

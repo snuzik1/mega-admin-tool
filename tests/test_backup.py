@@ -34,6 +34,12 @@ def test_backup_restore_roundtrip(tmp_path: Path) -> None:
     (home / "hosts_state.json").write_text("{}\n", encoding="utf-8")
     (home / "apps" / "demo.txt").write_text("demo\n", encoding="utf-8")
     (home / "configs" / "nginx.conf").write_text("server {}\n", encoding="utf-8")
+    (home / "tls" / "keys").mkdir(parents=True)
+    (home / "tls" / "server.crt").write_text("dummy cert\n", encoding="utf-8")
+    (home / "tls" / "server.key").write_text("dummy key\n", encoding="utf-8")
+    (home / "tls" / "keys" / "custom.key").write_text("dummy nested key\n", encoding="utf-8")
+    os.chmod(home / "tls" / "server.key", 0o600)
+    os.chmod(home / "tls" / "keys" / "custom.key", 0o600)
     (home / "logs").mkdir()
     (home / "logs" / "audit.jsonl").write_text('{"event": "x"}\n', encoding="utf-8")
     os.chmod(home / "auth.json", 0o600)
@@ -58,10 +64,17 @@ def test_backup_restore_roundtrip(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
     assert (restored / "config.json").read_text(encoding="utf-8") == '{"ui": {"language": "ru"}}\n'
     assert (restored / "apps" / "demo.txt").read_text(encoding="utf-8") == "demo\n"
+    assert (restored / "tls" / "server.key").read_text(encoding="utf-8") == "dummy key\n"
+    assert (restored / "tls" / "keys" / "custom.key").read_text(encoding="utf-8") == "dummy nested key\n"
     assert not (restored / "logs").exists()
     if os.name == "posix":
         assert (restored / "auth.json").stat().st_mode & 0o777 == 0o600
         assert (restored / "config.json").stat().st_mode & 0o777 == 0o600
+        assert (restored / "tls" / "server.key").stat().st_mode & 0o777 == 0o600
+        assert (restored / "tls" / "server.crt").stat().st_mode & 0o777 == 0o600
+        assert (restored / "tls" / "keys" / "custom.key").stat().st_mode & 0o777 == 0o600
+        assert (restored / "tls" / "keys").stat().st_mode & 0o777 == 0o700
+        assert (restored / "tls").stat().st_mode & 0o777 == 0o700
         assert restored.stat().st_mode & 0o700 == 0o700
 
     # Без --force второй раз не перезаписываем.

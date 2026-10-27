@@ -29,11 +29,12 @@ ALLOWED_TOP = {
     "apps",
     "bundles",
     "configs",
+    "tls",
     "logs",
     "runs",
 }
-PRIVATE_FILES = {"auth.json", "config.json"}
-PRIVATE_DIRS = {"logs"}
+PRIVATE_FILES = {"auth.json", "config.json", "server.key"}
+PRIVATE_DIRS = {"logs", "tls"}
 
 
 def default_home() -> Path:
@@ -73,6 +74,25 @@ def _check_target(target: Path, home: Path, home_resolved: Path) -> None:
     expected = home_resolved / target.relative_to(home)
     if target.resolve() != expected:
         raise ValueError(f"путь выходит за пределы MEGATOOL_HOME: {target}")
+
+
+def _inside_tls(target: Path, home: Path) -> bool:
+    try:
+        relative = target.relative_to(home)
+    except ValueError:
+        return False
+    return bool(relative.parts) and relative.parts[0] == "tls"
+
+
+def _private_file(target: Path, home: Path) -> bool:
+    """Всё содержимое tls/ считаем секретом: там может быть ключ с любым именем."""
+    if target.name in PRIVATE_FILES or target.name == "auth.json":
+        return True
+    return _inside_tls(target, home)
+
+
+def _private_dir(target: Path, home: Path) -> bool:
+    return target == home or target.name in PRIVATE_DIRS or _inside_tls(target, home)
 
 
 def restore(archive_path: Path, home: Path, force: bool, include_runs: bool) -> int:
@@ -135,18 +155,14 @@ def restore(archive_path: Path, home: Path, force: bool, include_runs: bool) -> 
                     if source.is_dir():
                         target.mkdir(parents=True, exist_ok=True)
                         if os.name == "posix":
-                            os.chmod(str(target), 0o700 if target.name in PRIVATE_DIRS or target == home else 0o755)
+                            os.chmod(str(target), 0o700 if _private_dir(target, home) else 0o755)
                     elif source.is_file():
                         target.parent.mkdir(parents=True, exist_ok=True)
                         if target.exists() and not force:
                             raise FileExistsError(str(target))
                         shutil.copy2(str(source), str(target))
-                        if os.name == "posix":
-                            mode = 0o600 if target.name in PRIVATE_FILES else None
-                            if target.name == "auth.json":
-                                mode = 0o600
-                            if mode is not None:
-                                os.chmod(str(target), mode)
+                        if os.name == "posix" and _private_file(target, home):
+                            os.chmod(str(target), 0o600)
             finally:
                 shutil.rmtree(str(temp_root), ignore_errors=True)
     except (OSError, tarfile.TarError, ValueError) as exc:

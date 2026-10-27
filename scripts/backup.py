@@ -29,6 +29,7 @@ TOP_LEVEL = (
     "apps",
     "bundles",
     "configs",
+    "tls",
     "logs",
     "runs",
 )
@@ -114,7 +115,7 @@ def build_archive(home: Path, output: Path, include_logs: bool, include_runs: bo
     if os.name == "posix":
         os.chmod(str(output), 0o600)
     print(f"Готово: {output} ({count} объектов, {output.stat().st_size} байт)")
-    print("В архиве может быть auth.json — храните его как секрет (0600).")
+    print("В архиве могут быть auth.json и приватный ключ TLS — храните архив как секрет (0600).")
     return 0
 
 

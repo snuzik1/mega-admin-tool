@@ -61,7 +61,7 @@ fi
 mkdir -p "$UNIT_DIR"
 cat > "$UNIT_DIR/$UNIT_NAME" <<EOF
 [Unit]
-Description=MegaTool — локальная консоль администратора и DevOps
+Description=MegaTool — консоль администратора и DevOps
 Documentation=file://$ROOT/README.md
 After=network-online.target
 Wants=network-online.target
@@ -74,6 +74,7 @@ Environment=PYTHONIOENCODING=utf-8
 Environment=PYTHONUNBUFFERED=1
 Environment="MEGATOOL_HOME=$MEGATOOL_HOME_EFFECTIVE"
 Environment="MEGATOOL_AUTH_FILE=$AUTH_FILE"
+UMask=0077
 Restart=on-failure
 RestartSec=3
 # Мягкое завершение: uvicorn успевает закрыть задачи и балансировщики.
@@ -93,12 +94,45 @@ if [ "$LINGER" = "1" ]; then
   fi
 fi
 
-PORT="$(sed -n 's/.*"port"[[:space:]]*:[[:space:]]*\([0-9]*\).*/\1/p' "$MEGATOOL_HOME_EFFECTIVE/config.json" 2>/dev/null | head -n1 || true)"
+CONFIG_FILE="$MEGATOOL_HOME_EFFECTIVE/config.json"
+PORT="$(sed -n 's/.*"port"[[:space:]]*:[[:space:]]*\([0-9]*\).*/\1/p' "$CONFIG_FILE" 2>/dev/null | head -n1 || true)"
 PORT="${PORT:-8787}"
+BIND_HOST="$("$PYTHON" - "$CONFIG_FILE" <<'PY' 2>/dev/null || true
+import json
+import sys
+try:
+    with open(sys.argv[1], encoding="utf-8") as handle:
+        config = json.load(handle)
+except (OSError, ValueError):
+    config = {}
+print((config.get("server") or {}).get("host") or "127.0.0.1")
+PY
+)"
+BIND_HOST="${BIND_HOST:-127.0.0.1}"
+case "$BIND_HOST" in
+  0.0.0.0|::) BIND_HOST="127.0.0.1" ;;
+esac
+case "$BIND_HOST" in
+  *:*) BIND_HOST="[$BIND_HOST]" ;;
+esac
+SCHEME="http"
+if "$PYTHON" - "$CONFIG_FILE" <<'PY' >/dev/null 2>&1
+import json
+import sys
+try:
+    with open(sys.argv[1], encoding="utf-8") as handle:
+        config = json.load(handle)
+except (OSError, ValueError):
+    raise SystemExit(1)
+raise SystemExit(0 if (config.get("server") or {}).get("tls", {}).get("enabled") is True else 1)
+PY
+then
+  SCHEME="https"
+fi
 
 echo ""
 echo "Автозапуск включён: $UNIT_NAME"
-echo "Интерфейс: http://127.0.0.1:$PORT/"
+echo "Интерфейс: $SCHEME://$BIND_HOST:$PORT/"
 echo "Статус:    systemctl --user status $UNIT_NAME"
 echo "Журнал:    journalctl --user -u $UNIT_NAME -f"
 echo "Удалить:   bash scripts/uninstall-autostart.sh"

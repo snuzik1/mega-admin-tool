@@ -16,6 +16,8 @@ DATA = {
         "nothingToUpdate": "нечего обновлять",
         "portMustBeNumber": "порт должен быть числом",
         "portOutOfRange": "порт вне диапазона 1..65535",
+        "tlsInvalid": "TLS не настроен: {error}",
+        "tlsGenerateFailed": "Не удалось создать сертификат: {error}",
         "badBase64": "не удалось разобрать содержимое файла (ожидается base64)",
         "fileTooLarge": "файл больше 8 МБ",
         "defaultFilename": "файл",

@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import base64
+import ipaddress
 import re
 import time
 import uuid
@@ -16,6 +17,7 @@ from typing import Any, Dict, List, Set, Tuple
 from fastapi import APIRouter, Body, HTTPException, Query, Request
 
 from . import __version__
+from . import tls as tls_support
 from .agents import MAX_AGENTS, normalize_url
 from .appfiles import Workspace, get_template, list_templates, nginx_test, validate
 from .balancer import ALGORITHMS
@@ -25,6 +27,7 @@ from .config import HOME_DIR, UI_DENSITIES, UI_LANGUAGES, UI_THEMES
 from .hosts import clean_hosts
 from .i18n import set_language, t
 from .recipes import catalog_stats, categories, get_recipe, kinds, list_recipes
+from .security import is_loopback
 from .util import human_bytes, iso, safe_id, which
 
 router = APIRouter(prefix="/api")
@@ -199,11 +202,30 @@ _ALLOWED_HOST_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9._:-]{0,251}[A-Za-z0-9]
 
 def _clean_allowed_host(value: Any) -> str:
     text = str(value or "").strip().lower()
-    if text.startswith("[") and "]" in text:
+    if text.startswith("["):
+        # [2001:db8::1]:8787 — порт допустим только после закрывающей скобки.
+        if "]" not in text:
+            return ""
+        rest = text[text.index("]") + 1:]
+        if rest and not (rest.startswith(":") and rest[1:].isdigit()):
+            return ""
         text = text[1:text.index("]")]
     elif text.count(":") == 1 and text.rsplit(":", 1)[1].isdigit():
         text = text.rsplit(":", 1)[0]
-    if not text or len(text) > 253 or not _ALLOWED_HOST_RE.fullmatch(text):
+    if not text:
+        return ""
+    try:
+        return str(ipaddress.ip_address(text))
+    except ValueError:
+        pass
+    if ":" in text or len(text) > 253 or not _ALLOWED_HOST_RE.fullmatch(text):
+        return ""
+    return text
+
+
+def _clean_path_setting(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text or len(text) > 4096 or any(ord(char) < 32 for char in text):
         return ""
     return text
 
@@ -220,6 +242,8 @@ def _clean_server(raw: Any) -> Dict[str, Any]:
         out["port"] = data["port"]
     if "open_browser" in data:
         out["open_browser"] = data.get("open_browser") is True
+    if "allow_insecure_remote" in data:
+        out["allow_insecure_remote"] = data.get("allow_insecure_remote") is True
     if "allowed_hosts" in data:
         values = data.get("allowed_hosts")
         if isinstance(values, list):
@@ -229,7 +253,42 @@ def _clean_server(raw: Any) -> Dict[str, Any]:
                 if name and name not in hosts:
                     hosts.append(name)
             out["allowed_hosts"] = hosts
+    if "tls" in data:
+        raw_tls = _as_dict(data.get("tls"))
+        tls: Dict[str, Any] = {}
+        if "enabled" in raw_tls:
+            tls["enabled"] = raw_tls.get("enabled") is True
+        for key in ("certfile", "keyfile"):
+            if key in raw_tls:
+                tls[key] = _clean_path_setting(raw_tls.get(key))
+        out["tls"] = tls
     return out
+
+
+def _merged_server(cfg, patch: Dict[str, Any]) -> Dict[str, Any]:
+    current = _as_dict(cfg.get("server", {}))
+    merged = dict(current)
+    merged.update(patch)
+    current_tls = _as_dict(current.get("tls", {}))
+    patch_tls = _as_dict(patch.get("tls", {}))
+    merged["tls"] = {**current_tls, **patch_tls}
+    return merged
+
+
+def _server_config_error(cfg, server: Dict[str, Any]) -> str:
+    host = str(server.get("host") or "127.0.0.1")
+    tls = _as_dict(server.get("tls", {}))
+    enabled = tls.get("enabled") is True
+    allow_insecure = server.get("allow_insecure_remote") is True
+    if not is_loopback(host) and not enabled and not allow_insecure:
+        return t("tls.externalRequired")
+    if enabled:
+        cert, key = tls_support.cert_paths_for(cfg, tls)
+        try:
+            tls_support.validate_files(cert, key)
+        except tls_support.TlsError as exc:
+            return t("api.tlsInvalid", error=str(exc))
+    return ""
 
 
 def _clean_ui(raw: Any) -> Dict[str, Any]:
@@ -316,6 +375,9 @@ def _clean_settings_patch(data: Any, runtime) -> Tuple[Dict[str, Any], str]:
             if not 1 <= port <= 65535:
                 return {}, t("api.portOutOfRange")
             server["port"] = port
+        server_error = _server_config_error(runtime.cfg, _merged_server(runtime.cfg, server))
+        if server_error:
+            return {}, server_error
         patch["server"] = server
     if "monitor" in patch:
         patch["monitor"] = _clean_monitor(patch["monitor"])
@@ -1171,6 +1233,7 @@ def settings_get(request: Request) -> Dict[str, Any]:
     return {
         "ok": True,
         "data": runtime.cfg.export(redact_secrets=True),
+        "tls": tls_support.describe(runtime.cfg),
         "paths": {
             "home": str(HOME_DIR),
             "config": str(runtime.cfg.path),
@@ -1190,6 +1253,22 @@ def settings_patch(request: Request, body: Dict[str, Any] = Body(default={})) ->
     _apply_settings(runtime, patch)
     audit("settings.update", target=", ".join(patch.keys()), ok=True)
     return _ok(runtime.cfg.export(redact_secrets=True), restart_required=("server" in patch))
+
+
+@router.post("/settings/tls/generate")
+def settings_tls_generate(request: Request, body: Dict[str, Any] = Body(default={})) -> Dict[str, Any]:
+    """Создаёт самоподписанный сертификат и включает HTTPS после перезапуска."""
+    runtime = rt(request)
+    force = _as_dict(body).get("force") is True
+    try:
+        info = tls_support.generate_self_signed(runtime.cfg, force=force)
+    except tls_support.TlsError as exc:
+        audit("settings.tls.generate", target="", ok=False, detail=str(exc))
+        return _fail(t("api.tlsGenerateFailed", error=str(exc)))
+    runtime.cfg.update({"server": {"tls": {"enabled": True}}})
+    info = tls_support.describe(runtime.cfg)
+    audit("settings.tls.generate", target=info.get("certfile", ""), ok=True)
+    return _ok(info, restart_required=True)
 
 
 @router.get("/settings/export")

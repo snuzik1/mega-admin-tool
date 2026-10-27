@@ -46,9 +46,15 @@ const SAFETY = [
   ["allow_file_delete", "settings.safety.fileDelete", "settings.safety.fileDeleteHint"],
 ];
 
+const isLoopbackHost = (host) => {
+  const value = String(host || "").trim().replace(/^\[|\]$/g, "").toLowerCase();
+  return value === "localhost" || value === "::1" || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(value);
+};
+
 export async function render(root, { app = null, args = [] } = {}) {
   const cleanups = [];
   let data = null;       // config
+  let tlsInfo = {};
   let paths = {};
   let workspace = {};
   let activeTab = ["server", "monitor", "agents", "engines", "safety", "system", "ui", "data"].includes(args[0]) ? args[0] : "server";
@@ -62,6 +68,7 @@ export async function render(root, { app = null, args = [] } = {}) {
     const result = await guard(() => api.get("/api/settings"), { quiet: true });
     if (!result) return false;
     data = result.data || {};
+    tlsInfo = result.tls || {};
     paths = result.paths || {};
     workspace = result.workspace || {};
     // Каталоги приложений/конфигов/запусков отдаёт отдельный обработчик
@@ -128,6 +135,54 @@ export async function render(root, { app = null, args = [] } = {}) {
 
   const drawServer = (host) => {
     const server = data.server || {};
+    const tls = server.tls || {};
+    const info = tlsInfo || {};
+    const external = !isLoopbackHost(server.host);
+    const refresh = async () => {
+      if (await load()) draw();
+    };
+    const generate = async () => {
+      const ok = await confirmDialog(t("settings.server.tls.confirm"), {
+        title: t("settings.server.tls.card"),
+        okLabel: t("settings.server.tls.generate"),
+        danger: false,
+      });
+      if (!ok) return;
+      const result = await guard(() => api.post("/api/settings/tls/generate", { force: true }), { success: "" });
+      if (!result) return;
+      toast(t("settings.server.tls.generated"), "success");
+      await refresh();
+      modal({
+        title: t("settings.restart.title"),
+        width: 460,
+        body: h("p", {}, t("settings.server.tls.restart")),
+        actions: [{ label: t("settings.restart.ok") }],
+      });
+    };
+    const enable = async () => {
+      if (await save({ server: { tls: { enabled: true } } }, { success: t("settings.settingSaved") })) await refresh();
+    };
+    const disable = async () => {
+      if (await save({ server: { tls: { enabled: false } } }, { success: t("settings.settingSaved") })) await refresh();
+    };
+    const status = info.error
+      ? badge(t("settings.server.tls.error"), "bad")
+      : tls.enabled
+        ? badge(t("settings.server.tls.statusOn"), "ok")
+        : badge(info.exists ? t("settings.server.tls.statusOff") : t("settings.server.tls.statusMissing"), external ? "bad" : "muted");
+    const certControl = input({ value: tls.certfile || "", placeholder: info.certfile || "" });
+    const keyControl = input({ value: tls.keyfile || "", placeholder: info.keyfile || "" });
+    const savePaths = async () => {
+      const saved = await save({
+        server: {
+          tls: {
+            certfile: certControl.value.trim(),
+            keyfile: keyControl.value.trim(),
+          },
+        },
+      }, { restart: true, success: t("settings.server.tls.pathsSaved") });
+      if (saved) await refresh();
+    };
     mount(host,
       card(t("settings.server.card"), h("div", { class: "col" },
         notice(t("settings.server.notice"), "warn"),
@@ -150,6 +205,34 @@ export async function render(root, { app = null, args = [] } = {}) {
           async (list) => { await save({ server: { allowed_hosts: list } }, { success: t("settings.server.allowedHostsSaved") }); })
       )),
 
+      card(t("settings.server.tls.card"), h("div", { class: "col" },
+        h("div", { class: "toolbar" }, status),
+        external && !tls.enabled ? notice(t("settings.server.tls.externalWarning"), "bad") : null,
+        info.error ? notice(`${t("settings.server.tls.error")}: ${info.error}`, "bad") : null,
+        h("p", { class: "small muted" }, t("settings.server.tls.desc")),
+        h("div", { class: "grid cards-2" },
+          field(t("settings.server.tls.certPath"), certControl),
+          field(t("settings.server.tls.keyPath"), keyControl)),
+        h("div", { class: "toolbar" },
+          button(t("common.buttons.save"), savePaths, { size: "sm", kind: "ghost" })),
+        h("p", { class: "small muted" }, t("settings.server.tls.pathHint")),
+        kvRows([
+          [t("settings.server.tls.cert"), h("span", { class: "mono small" }, info.certfile || t("common.dash"))],
+          [t("settings.server.tls.key"), h("span", { class: "mono small" }, info.keyfile || t("common.dash"))],
+          [t("settings.server.tls.fingerprint"), h("span", { class: "mono small" }, info.fingerprint || t("common.dash"))],
+          [t("settings.server.tls.expires"), info.not_after || t("common.dash")],
+        ]),
+        h("p", { class: "small muted" }, t("settings.server.tls.trustHint")),
+        h("div", { class: "toolbar" },
+          button(info.exists ? t("settings.server.tls.regenerate") : t("settings.server.tls.generate"), generate,
+            { kind: "primary", size: "sm" }),
+          info.exists && !tls.enabled ? button(t("settings.server.tls.enable"), enable, { size: "sm", kind: "ghost" }) : null,
+          tls.enabled ? button(t("settings.server.tls.disable"), disable, {
+            size: "sm", kind: "ghost", disabled: external,
+            title: external ? t("settings.server.tls.externalWarning") : "",
+          }) : null
+        )
+      )),
 
       card(t("settings.dirs.card"), h("div", {},
         kvRows([

@@ -2,9 +2,9 @@
 
 [![CI](https://github.com/snuzik1/mega-admin-tool/actions/workflows/ci.yml/badge.svg)](https://github.com/snuzik1/mega-admin-tool/actions/workflows/ci.yml)
 
-**Версия:** 0.8.0 · **Платформа:** Linux · **Python:** 3.8+ · **Лицензия:** MIT · **Интерфейс:** RU/EN · **Статус:** alpha
+**Версия:** 0.9.0 · **Платформа:** Linux · **Python:** 3.8+ · **Лицензия:** MIT · **Интерфейс:** RU/EN · **Статус:** alpha
 
-**MegaTool** — открытая (MIT) локальная веб-консоль администратора и DevOps
+**MegaTool** — открытая (MIT) self-hosted веб-консоль администратора и DevOps
 для Linux. Один Python-процесс отдаёт и API, и интерфейс: мониторинг сервера,
 произвольные серверы и сервисы, контейнеры, балансировщик нагрузки, редактор
 конфигов, каталог приложений, наборы конфигов, автоматическая настройка
@@ -36,6 +36,34 @@
   `nginx`, `ssh`) подключаются по желанию — без них приложение работает,
   а соответствующие разделы аккуратно сообщают, чего не хватает.
 
+## Что нового в 0.9.0
+
+* **Удалённый доступ без обязательного обратного прокси.** MegaTool запускает
+  uvicorn с TLS напрямую (`server.tls.enabled`), поэтому HTTPS-терминация
+  встроена в приложение. Для локальной сети сертификат можно создать из
+  интерфейса или командой `--setup`; поддерживаются собственные PEM-сертификат
+  и ключ (`--tls-cert`, `--tls-key` или пути в настройках).
+* **Безопасность по умолчанию.** Внешний bind (`0.0.0.0`/`::`) без TLS
+  отклоняется при запуске и в `PATCH /api/settings`; исключение — явный
+  `--allow-insecure-remote` или `MEGATOOL_ALLOW_INSECURE_REMOTE=1` для
+  изолированных стендов. HTTPS-ответы получают HSTS, а проверка Host теперь
+  работает и для внешнего bind: разрешены loopback, имя машины, локальные
+  IP-адреса, адрес привязки и `server.allowed_hosts`.
+* **Мастер настройки** `sh run.sh --setup`: локальный HTTP на `127.0.0.1` или
+  LAN HTTPS с самоподписанным сертификатом, печатью LAN-адресов, SHA-256
+  отпечатка и напоминанием про firewall. Сертификат создаётся в
+  `~/.megatool/tls/` (`server.crt` — `0644`, `server.key` — `0600`, каталог
+  `0700`); SAN включает локальные имена/IP, адрес привязки и разрешённые Host.
+* **Настройки TLS в веб-интерфейсе**: статус, срок действия, отпечаток,
+  генерация/пересоздание сертификата, включение и выключение HTTPS. После
+  изменения схемы требуется перезапуск MegaTool.
+* `install.sh` и Docker-образ ставят `openssl` и `ca-certificates`;
+  systemd-служба определяет HTTPS и показывает правильный URL; резервная копия
+  включает каталог `tls/`.
+* Новые тесты: генерация и права TLS-файлов, отказ внешнего bind без TLS,
+  API-валидация, Host allowlist при внешнем bind, HSTS и сохранение TLS в
+  backup/restore.
+
 ## Что нового в 0.8.0
 
 * **Аутентификация с одной учётной записью администратора.** При обычном запуске
@@ -53,7 +81,8 @@
   `MEGATOOL_ADMIN_PASSWORD` (не рекомендуется для постоянной эксплуатации).
 * **Эксплуатация**: systemd-служба запускается без терминального вопроса, но
   требует заранее созданный файл секрета; веб-вход остаётся обязательным.
-  Для HTTPS за обратным прокси включите `MEGATOOL_SECURE_COOKIE=1`.
+  В 0.8.0 HTTPS предполагался через обратный прокси; в 0.9.0 появился
+  встроенный TLS и мастер `--setup`.
 * **Резервные копии и контейнер**: `scripts/backup.py`/`scripts/restore.py`
   безопасно копируют данные (включая `auth.json`) и проверяют архив на `..`
   и симлинки; `Dockerfile` запускает приложение от непривилегированного
@@ -174,18 +203,18 @@ MegaTool работает только на Linux. Для запуска нуж�
 Если автоматическая установка не подходит, поставьте пакеты вручную:
 
 ```bash
-# Debian/Ubuntu
+# Debian/Ubuntu (openssl/ca-certificates нужны для встроенного HTTPS)
 sudo apt update
-sudo apt install python3 python3-venv
+sudo apt install python3 python3-venv openssl ca-certificates
 
 # Fedora/RHEL
-sudo dnf install python3
+sudo dnf install python3 openssl ca-certificates
 
 # Arch
-sudo pacman -S python
+sudo pacman -S python openssl ca-certificates
 
 # Alpine (bash нужен для bootstrap/smoke, но не для run.sh)
-sudo apk add python3 py3-pip bash build-base linux-headers
+sudo apk add python3 py3-pip bash build-base linux-headers openssl ca-certificates
 ```
 
 Автоустановку системных пакетов можно отключить:
@@ -262,6 +291,57 @@ Docker, kubectl, Ansible, nginx и SSH-клиент автоматически *
 проекта; переменную понимают `start.py`, `scripts/bootstrap.sh` и
 `scripts/install-autostart.sh`).
 
+### Удалённый доступ и HTTPS
+
+Для доступа с другого компьютера не нужен обратный прокси: MegaTool умеет
+сам работать по HTTPS. Самый простой путь — интерактивный мастер:
+
+```bash
+sh run.sh --setup
+```
+
+Он предложит два режима:
+
+1. **Только этот компьютер** — HTTP на `127.0.0.1` (по умолчанию).
+2. **Локальная сеть** — HTTPS на `0.0.0.0` с самоподписанным сертификатом;
+   мастер создаст ключ, покажет LAN-адреса, SHA-256 отпечаток и напомнит
+   открыть TCP-порт в firewall.
+
+После настройки запустите MegaTool обычной командой `sh run.sh` (или
+`systemctl --user start megatool`). В браузере на другом компьютере откройте
+`https://IP-СЕРВЕРА:8787/`. Самоподписанный сертификат вызовет предупреждение:
+импортируйте `~/.megatool/tls/server.crt` в доверенные корневые сертификаты
+либо сразу используйте доверенный сертификат.
+
+Требования к внешнему доступу:
+
+* bind на `0.0.0.0`/`::` без TLS **запрещён**; для осознанного исключения
+  есть `--allow-insecure-remote` и `MEGATOOL_ALLOW_INSECURE_REMOTE=1` (только
+  для изолированной лаборатории, не для интернета);
+* Host allowlist работает всегда. Локальные IP, имя машины и адрес привязки
+  разрешаются автоматически; своё DNS-имя добавьте в
+  **Настройки → Сервер → Дополнительные имена Host** (`server.allowed_hosts`);
+* включённый firewall ОС MegaTool **не** меняет. Разрешите порт вручную
+  (например, `sudo ufw allow 8787/tcp`) и не публикуйте приложение в интернет
+  без TLS, сложного пароля и обновлений;
+* если нужен собственный PEM-сертификат, скопируйте сертификат и ключ в
+  каталог с закрытыми правами и укажите пути:
+  `sh run.sh --tls-cert /path/server.crt --tls-key /path/server.key`.
+  Ключ должен принадлежать пользователю MegaTool, иметь права `0600`, а его
+  каталог — права `0700`. Симлинки в качестве `certfile`/`keyfile`
+  отклоняются; для Let's Encrypt используйте
+  deploy-hook, который копирует файлы и перезапускает MegaTool. После смены
+  сертификата нужен перезапуск.
+
+Проверить TLS из терминала:
+
+```bash
+curl -vk https://127.0.0.1:8787/api/health
+```
+
+Подробности, Docker и восстановление после сбоев — в
+[docs/OPERATIONS.md](docs/OPERATIONS.md).
+
 ### Переезд с Windows или macOS
 
 Поддержка Windows и macOS удалена в 0.7.0: обёртки `start.cmd`/`run.ps1` и
@@ -322,8 +402,8 @@ bash scripts/bootstrap.sh --dev
 запуске в терминале запрашивается пароль администратора, затем в браузере
 открывается страница входа. Для запуска без терминального вопроса (systemd,
 контейнер, CI) используйте `--no-login-prompt`; веб-вход всё равно обязателен.
-Если открываете MegaTool по сети, дополнительно ограничьте доступ межсетевым
-экраном и поставьте перед ним обратный прокси с TLS.
+Для сети используйте мастер `--setup` (встроенный HTTPS) и ограничьте порт
+межсетевым экраном; обратный прокси не обязателен.
 
 ## Автозапуск
 
@@ -351,7 +431,8 @@ journalctl --user -u megatool.service -f
 ## Командная строка
 
 ```
-sh run.sh [--host 127.0.0.1] [--port 8787] [--no-browser]
+sh run.sh [--host 127.0.0.1] [--port 8787] [--no-browser] [--setup]
+          [--tls-cert ПУТЬ --tls-key ПУТЬ] [--allow-insecure-remote]
           [--home ПУТЬ] [--config ФАЙЛ] [--log-level info] [--reload]
           [--set-password | --auth-status] [--no-login-prompt]
           [--auth-file ПУТЬ]
@@ -360,12 +441,19 @@ sh run.sh [--host 127.0.0.1] [--port 8787] [--no-browser]
 Внутри уже созданного окружения ту же команду можно запускать напрямую:
 
 ```
-.venv/bin/python -m megatool [--host 127.0.0.1] [--port 8787] [--no-browser]
+.venv/bin/python -m megatool [--host 127.0.0.1] [--port 8787] [--no-browser] [--setup]
+                            [--tls-cert ПУТЬ --tls-key ПУТЬ] [--allow-insecure-remote]
                             [--home ПУТЬ] [--config ФАЙЛ] [--log-level info] [--reload]
                             [--set-password | --auth-status] [--no-login-prompt]
                             [--auth-file ПУТЬ]
 ```
 
+* `--setup` — мастер локального/сетевого доступа (HTTP или HTTPS); после него
+  запустите MegaTool обычной командой;
+* `--tls-cert` и `--tls-key` — собственные PEM-сертификат и ключ; включают
+  HTTPS и сохраняются в `server.tls` (нужны оба флага);
+* `--allow-insecure-remote` — явно разрешить внешний bind без TLS; не
+  используйте в интернете (есть также `MEGATOOL_ALLOW_INSECURE_REMOTE`);
 * `--home` — рабочий каталог (то же, что переменная окружения `MEGATOOL_HOME`);
 * `--config` — путь к `config.json`, если он лежит не в рабочем каталоге;
 * `--reload` — автоперезапуск при изменении кода (для разработки);
@@ -388,6 +476,7 @@ sh run.sh [--host 127.0.0.1] [--port 8787] [--no-browser]
   apps/              # развёрнутые приложения из каталога
   bundles/           # наборы конфигов (<id>/bundle.json + files/...)
   configs/           # библиотека конфигов, манифесты, экспорт балансировщиков
+  tls/               # server.crt/server.key для встроенного HTTPS (каталог 0700)
   runs/              # история и логи долгих задач
   logs/audit.jsonl   # журнал всех изменяющих действий (с ротацией)
 ```
@@ -419,8 +508,10 @@ CSS-переменные, включая цвета и штриховку гра
 
 В настройках также доступны:
 
-* **Сервер** — адрес, порт и дополнительные имена `Host` для работы за
-  обратным прокси (`server.allowed_hosts`);
+* **Сервер** — адрес, порт, дополнительные имена `Host`
+  (`server.allowed_hosts`) и встроенный HTTPS: статус/отпечаток сертификата,
+  свои пути к PEM-файлам, генерация самоподписанного сертификата, включение и
+  выключение TLS; смена адреса/порта/TLS требует перезапуска;
 * **Система** — максимальный размер и число архивов журнала аудита, лимит
   одновременных задач и число хранимых записей;
 * **Интерфейс** — тема, плотность, язык и системные уведомления;
@@ -429,7 +520,9 @@ CSS-переменные, включая цвета и штриховку гра
 * **Агенты** — удалённые агенты мониторинга, их адреса и токены.
 
 Числовые значения проверяются на сервере и ограничиваются безопасными
-диапазонами; настройки, кроме адреса и порта сервера, применяются сразу.
+диапазонами; настройки, кроме адреса, порта и TLS, применяются сразу.
+Изменения TLS и сертификата вступают в силу после перезапуска; до него сервер
+продолжает работать по прежней схеме.
 
 ## Языки
 
@@ -556,8 +649,8 @@ uptime фиксируется, а время выключения начинае
 ## Аутентификация
 
 MegaTool использует **одну учётную запись администратора** с полным доступом ко
-всем разделам. Отдельных ролей и пользователей нет: это локальная консоль для
-одного оператора, а не многопользовательский сервис.
+всем разделам. Отдельных ролей и пользователей нет: это self-hosted консоль
+для одного оператора, а не многопользовательский сервис.
 
 ### Первый запуск и вход
 
@@ -631,10 +724,11 @@ bash scripts/install-autostart.sh --linger
 `/api/auth/login`, возвращают `401`; WebSocket закрывается кодом `4401`.
 Ответы API отдаются с `Cache-Control: no-store`, чтобы конфиги и результаты
 команд не кэшировались. Cookie сессии — `HttpOnly`, `SameSite=Strict`, с ограничением попыток входа
-(5 неудач за 60 секунд с одного адреса). При работе за HTTPS-прокси включите
-`MEGATOOL_SECURE_COOKIE=1`, чтобы cookie помечалась `Secure`. По-прежнему
-держите `server.host = 127.0.0.1`, если консоль нужна только на этой машине;
-для удалённого доступа используйте SSH-туннель, VPN или обратный прокси с TLS.
+(5 неудач за 60 секунд с одного адреса). При встроенном HTTPS cookie получает
+`Secure` автоматически; `MEGATOOL_SECURE_COOKIE=1` нужен только если TLS
+терминирует внешний прокси. Держите `server.host = 127.0.0.1`, если консоль
+нужна только на этой машине; для удалённого доступа включите встроенный TLS
+мастером `--setup` или настройками и ограничьте порт firewall/VPN.
 
 Старые ключи `auth` в `config.json` игнорируются при загрузке, не возвращаются
 через API/экспорт и не могут быть добавлены через `PATCH /api/settings` или
@@ -655,20 +749,29 @@ bash scripts/install-autostart.sh --linger
 
 ## Безопасность
 
-MegaTool создан для локального использования и это отражено в настройках:
+MegaTool — self-hosted приложение; сетевой доступ по умолчанию закрыт, а
+внешний bind без TLS запрещён:
 
-* по умолчанию слушает только `127.0.0.1`; запросы к `/api/*` и WebSocket
-  проверяют заголовки `Host`/`Origin` (защита от DNS-rebinding и CSWSH), чужие
-  имена отклоняются, пока не добавлены в `server.allowed_hosts`; за reverse
-  proxy сохраняйте исходный `Host`, иначе same-origin проверка отклонит запрос;
+* по умолчанию слушает только `127.0.0.1`. Для внешнего адреса нужен
+  встроенный HTTPS (или явный `--allow-insecure-remote` для изолированного
+  стенда); при старте проверяются сертификат, ключ, владелец и права. Ключ
+  должен быть `0600`, каталог ключа — `0700`; сгенерированный сертификат — `0644`;
+* HTTPS-ответы получают HSTS (`max-age=31536000`). Сертификат можно создать в
+  интерфейсе/мастере или указать собственный PEM; автоматического продления
+  Let's Encrypt нет — обновляйте файлы и перезапускайте MegaTool;
+* запросы к `/api/*` и WebSocket проверяют заголовки `Host`/`Origin` (защита
+  от DNS-rebinding и CSWSH). Проверка работает и при внешнем bind: кроме
+  loopback разрешены имя машины, локальные IP, адрес привязки и явно
+  добавленные `server.allowed_hosts`; за reverse proxy сохраняйте исходный
+  `Host`, иначе same-origin проверка отклонит запрос;
 * все ответы получают CSP, `X-Frame-Options: DENY`, `nosniff`,
   `Referrer-Policy` и ограниченный `Permissions-Policy`; интерфейс работает без
   inline-скриптов и внешних CDN;
 * встроенная аутентификация включена всегда: одна учётная запись `admin`,
   PBKDF2-хеш в `auth.json` (`0600`), сессии в памяти на 12 часов, cookie
   `HttpOnly`/`SameSite=Strict`, ограничение попыток входа. API и WebSocket
-  закрыты без сессии; для сетевого доступа всё равно используйте TLS, VPN или
-  SSH-туннель;
+  закрыты без сессии; для интернета дополнительно используйте VPN или
+  ограничение по IP;
 * токены удалённых агентов проверяются только агентом (`Authorization: Bearer`
   или `X-MegaTool-Agent-Token`) и не дают доступа к консоли;
 * размер тела запроса ограничен 25 МБ;
@@ -711,8 +814,10 @@ Alpine-контейнере, где `run.sh` и `install.sh` сами устан
 Ansible-инвентарь, защита Host/Origin, заголовки безопасности и WebSocket,
 проверки доступности (HTTP/TCP и валидация), мониторинг серверов
 (uptime/простой/выключение), настройки (валидация, импорт, отбрасывание `auth`,
-права файла), лимит одновременных задач, ротация аудита, локализация (полнота
-словарей), наборы конфигов (создание/файлы/экспорт ZIP), SSH-серверы (CRUD,
+права файла), встроенный TLS (генерация, SAN, права ключа/каталога, отпечаток,
+внешний bind, HSTS, API настроек), лимит одновременных задач, ротация аудита,
+локализация (полнота словарей), наборы конфигов (создание/файлы/экспорт ZIP),
+SSH-серверы (CRUD,
 задачи, dry-run, плейбуки, валидация), удалённый агент (настоящий HTTP-сервер и
 API) и живой uvicorn с WebSocket и входом. Изоляция — отдельный `MEGATOOL_HOME`
 на прогон. Полный набор тестов проходит на Linux.
@@ -747,7 +852,8 @@ megatool/            # Python-пакет (backend)
   k8s.py            # kubectl
   ansible.py        # ansible-playbook, инвентарь
   jobs.py           # долгие задачи и логи (stdin для скриптов)
-  security.py       # определение loopback-адресов
+  tls.py            # встроенный HTTPS, проверка и генерация сертификатов
+  security.py       # loopback, локальные IP/имена для Host guard и SAN
   i18n.py           # локализация серверных сообщений
   lang/             # словари backend: ru_<модуль>.py / en_<модуль>.py
   config.py         # настройки по умолчанию, пути
@@ -791,7 +897,7 @@ MIT — см. [LICENSE](LICENSE). Делайте что хотите, тольк
 
 ## English summary
 
-**MegaTool** is an open-source (MIT) local web console for sysadmins and DevOps on
+**MegaTool** is an open-source (MIT) self-hosted web console for sysadmins and DevOps on
 Linux, running on Python 3.8+ as a single process (FastAPI + vanilla-JS frontend,
 no build step, no CDN). It monitors the host (CPU, memory, disks, network, temperatures, alerts),
 manages Docker/Podman containers and compose stacks, runs a real asyncio-based
@@ -811,9 +917,12 @@ is set in the terminal on first launch and stored only as a PBKDF2-SHA256 hash i
 `~/.megatool/auth.json` (`0600`); the web UI, API and WebSockets require a session
 (12-hour in-memory session, HttpOnly/SameSite=Strict cookie, login rate limiting).
 Use `--no-login-prompt` for systemd/CI, but keep the credential file and web login
-in place. Keep MegaTool on loopback or put it behind TLS, VPN or an SSH tunnel.
-Remote-agent tokens remain a separate mechanism. See [docs/GUIDE.md](docs/GUIDE.md)
-for a quick per-section guide.
+in place. Keep MegaTool on loopback, or enable its built-in HTTPS with
+`--setup`/Settings and allow the port only through a firewall or VPN. An external
+bind without TLS is rejected unless `--allow-insecure-remote` is explicitly set.
+TLS certificates and keys are validated (key `0600`, private directory `0700`);
+HTTPS responses include HSTS. Remote-agent tokens remain a separate mechanism.
+See [docs/GUIDE.md](docs/GUIDE.md) for a quick per-section guide.
 The interface is responsive: on phones the navigation collapses into a burger
 menu and cards/tables adapt to the narrow screen. An autostart helper is included
 for Linux (systemd user unit).
@@ -826,10 +935,12 @@ curl -fsSL https://raw.githubusercontent.com/snuzik1/mega-admin-tool/main/quicks
 
 The UI is fully bilingual (Russian and English, switchable in the top bar or
 Settings); backend messages, alerts and recipe metadata are localized as well.
-The app listens on loopback by default; API and WebSocket calls are protected
-against DNS rebinding and CSWSH (Host/Origin checks), responses get a strict CSP,
-and an audit log with rotation records changing actions. Everything runs locally;
-external tools are optional and degrade gracefully. The frontend is packaged
+The app listens on loopback by default; an external bind requires built-in TLS
+or the explicit `--allow-insecure-remote` override. API and WebSocket calls are
+protected against DNS rebinding and CSWSH (Host/Origin checks), HTTPS responses
+get HSTS, responses get a strict CSP, and an audit log with rotation records
+changing actions. Everything runs locally; external tools are optional and
+degrade gracefully. The frontend is packaged
 inside the wheel. On first launch `run.sh` can install missing Python/venv
 system packages through the distro package manager (opt out with
 `MEGATOOL_AUTO_INSTALL=0`). Runs on Linux; CI tests Ubuntu with Python 3.8,

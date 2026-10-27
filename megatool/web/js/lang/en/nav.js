@@ -95,7 +95,7 @@ export default {
   },
   help: {
     title: "Interface help",
-    lead: "MegaTool is a local console for monitoring and automation. Sections are grouped by task; hover a menu item to see its description.",
+    lead: "MegaTool is a self-hosted console for monitoring and automation. Sections are grouped by task; hover a menu item to see its description.",
     startTitle: "Getting started",
     start: {
       overview: "“Overview” shows live metrics for this machine and active alerts.",
