@@ -161,6 +161,9 @@ jobs:
           required = {
               "megatool/auth.py",
               "megatool/api_auth.py",
+              "megatool/tls.py",
+              "megatool/lang/ru_tls.py",
+              "megatool/lang/en_tls.py",
               "megatool/web/index.html",
               "megatool/web/css/app.css",
               "megatool/web/js/app.js",
@@ -191,6 +194,7 @@ jobs:
           required = {
               "quickstart.sh",
               "install.sh",
+              "tls.py",
               "run.sh",
               "start.py",
               "requirements.txt",
